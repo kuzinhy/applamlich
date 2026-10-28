@@ -1,0 +1,76 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# --- Node / Frontend ---
+node_modules/
+dist/
+build/
+npm-debug.log*
+yarn-error.log*
+.vite/
+
+# --- Ban cu (Python + frontend cu) ---
+# Trunk hien tai la server/ (Node) + src/ (React). Thu muc app/ chi de luu tru dia phuong.
+app/
+
+# --- Du lieu va tai san sinh tai ---
+# Database, log, file xuat, file tai len: khong vao version control
+# Dung ** de bat ca database o duoi app/backend, khong rieng duong dan goc.
+**/database/*.db
+**/database/*.db-journal
+**/database/*.db-wal
+**/database/*.db-shm
+backups/
+logs/
+outputs/
+uploads/*
+!uploads/.gitkeep
+data/drive_incoming/
+data/drive_published/
+data/ocr-cache/
+# Ban xuat SQLite va store JSON chua lich that cua phuong, khong day len repo public.
+data/schedule_export.json
+data/app_store.json
+data/*.bak
+data/*.tmp
+data/app_store.backup-*.json
+
+# --- Khoa bi / cau hinh may ---
+.env
+.env.*
+# .env.example chi ghi ten bien, duoc phep phat trong repo.
+!.env.example
+*.pem
+*.key
+
+# --- Cau hinh Firebase (chua khoa web cua du an) ---
+# Chi nut lien duoc phep phat; ban that tao bang cach sao doi tu firebase-applet-config.example.json
+firebase-applet-config.json
+!firebase-applet-config.example.json
+
+# --- Thu muc kiem tra tam thoi khi chay test ---
+.verify-*/
+.verify-*.log
+.verify-*.ts
+.verify-*.txt
+
+# --- He dieu hanh / editor ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# OCR language data tải về khi chạy thử
+*.traineddata

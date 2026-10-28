@@ -1,0 +1,49 @@
+{
+  "name": "applamlich-agency-advisor",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx server.ts",
+    "start": "node --env-file-if-exists=.env --import tsx server.ts",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "test": "node --import tsx --test \"server/tests/*.test.ts\""
+  },
+  "dependencies": {
+    "@google/genai": "^2.31.0",
+    "@napi-rs/canvas": "^0.1.100",
+    "canvas-confetti": "^1.9.4",
+    "docx": "^9.15.0",
+    "exceljs": "^4.4.0",
+    "express": "^5.3.0",
+    "firebase": "^13.1.0",
+    "lucide-react": "^0.469.0",
+    "nodemailer": "^10.2.1",
+    "pdfjs-dist": "^4.10.38",
+    "pdfkit": "^0.16.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.2",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.6",
+    "uuid": "^11.1.1"
+  }
+}

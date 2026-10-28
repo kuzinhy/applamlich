@@ -1,0 +1,120 @@
+:root {
+  /* Font chữ giao diện: lấy có sẵn trên máy, không tải từ mạng (app chạy offline + PWA). */
+  --font-ui: "Segoe UI", "Segoe UI Variable Text", system-ui, -apple-system, "Be Vietnam Pro",
+    "Noto Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Font văn bản hành chính theo Nghị định 30/2020: Times New Roman, Tinos/Nimbus Roman là bản cùng số đo. */
+  --font-doc: "Times New Roman", Times, Tinos, "Nimbus Roman", "Liberation Serif", serif;
+  --font-mono: ui-monospace, Menlo, Consolas, "Segoe UI Mono", monospace;
+
+  --primary: #2563EB;
+  --primary-hover: #1D4ED8;
+  --primary-light: #EFF6FF;
+  --navy: #0F2A5F;
+  --success: #10B981;
+  --success-light: #ECFDF5;
+  --warning: #F59E0B;
+  --warning-light: #FFFBEB;
+  --danger: #DC2626;
+  --danger-light: #FEF2F2;
+  --bg-app: #F8FAFC;
+  --surface: #FFFFFF;
+  --border: #E5EAF2;
+  --text-main: #1E293B;
+  --text-muted: #64748B;
+  --text-light: #94A3B8;
+  --radius-card: 16px;
+  --radius-btn: 10px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Điều khiển form không kế thừa font, phải khai báo tường minh. */
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+/* Văn bản lịch: mọi thứ trong khối giấy dùng Times, riêng thanh công cụ outside giữ font giao diện. */
+.doc-print, .doc-print * {
+  font-family: var(--font-doc);
+}
+.doc-print .no-print, .doc-print .no-print * {
+  font-family: var(--font-ui);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Badges */
+.badge-priority-high {
+  background-color: #FEE2E2;
+  color: #B91C1C;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.badge-priority-mid {
+  background-color: #FEF3C7;
+  color: #B45309;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.badge-priority-normal {
+  background-color: #DBEAFE;
+  color: #1D4ED8;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.badge-priority-low {
+  background-color: #D1FAE5;
+  color: #047857;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* In riêng văn bản lịch: ẩn toàn bộ giao diện, chỉ giữ khối .doc-print */
+@media print {
+  body * { visibility: hidden; }
+  .doc-print, .doc-print * { visibility: visible; }
+  .doc-print { position: absolute; left: 0; top: 0; width: 100%; padding: 0; border: none; box-shadow: none; }
+  .no-print { display: none !important; }
+}

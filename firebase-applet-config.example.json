@@ -1,0 +1,11 @@
+{
+  "projectId": "du-an-cua-ban",
+  "appId": "1:000000000000:web:0000000000000000000000",
+  "apiKey": "AIzaSy_DAI_NGUYEN_API_KEY_CUA_BAN",
+  "authDomain": "du-an-cua-ban.firebaseapp.com",
+  "storageBucket": "du-an-cua-ban.firebasestorage.app",
+  "messagingSenderId": "000000000000",
+  "measurementId": "G-XXXXXXXXXX",
+  "oAuthClientId": "000000000000-xxxxxxxxxxxxxxxx.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
+}

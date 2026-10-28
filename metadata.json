@@ -1,0 +1,5 @@
+{
+  "name": "Trợ Lý & Quản Lý Lịch Công Tác Lãnh Đạo AI",
+  "description": "Hệ thống tham mưu, bóc tách văn bản công tác và tự động lập lịch làm việc cho Đảng ủy Phường Thủ Dầu Một, TP. Hồ Chí Minh",
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

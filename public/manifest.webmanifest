@@ -1,0 +1,49 @@
+{
+  "id": "/",
+  "name": "Trợ lý lịch công tác lãnh đạo",
+  "short_name": "Lịch công tác",
+  "description": "Bóc tách văn bản, lập lịch công tác tuần, kiểm tra thể thức Nghị định 30/2020 và đôn đốc hạn nộp cho Ban Xây dựng Đảng.",
+  "lang": "vi",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities"],
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "background_color": "#F8FAFC",
+  "theme_color": "#0F2A5F",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Hôm nay",
+      "short_name": "Hôm nay",
+      "url": "/?view=today",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Văn bản chờ duyệt",
+      "short_name": "Chờ duyệt",
+      "url": "/?view=proposed",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}
