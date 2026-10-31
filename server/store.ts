@@ -14,18 +14,25 @@ import {
   EVENT_TASK_LIMIT,
   TRASH_LIMIT,
   SHARE_ACCESS_LIMIT,
+  EVENT_COMMENT_LIMIT,
+  EVENT_VERSION_LIMIT,
+  PUSH_SUBSCRIPTION_LIMIT,
   DEFAULT_DRIVE_CONFIG,
   DEFAULT_SETTINGS,
   DEFAULT_WEBHOOK_CONFIG,
   DEFAULT_NOTIFICATION_CONFIG,
+  DEFAULT_USER_NOTIFY_PREFS,
   type AuditEntry,
   type AuthMeta,
+  type EventComment,
   type EventRecord,
   type EventTask,
+  type EventVersion,
   type MemoryRecord,
   type NotificationConfig,
   type NotificationDelivery,
   type PublicationRecord,
+  type PushSubscriptionRecord,
   type SessionRecord,
   type ShareAccessRecord,
   type SourceRecord,
@@ -226,6 +233,20 @@ function normalizeUser(row: any): UserRecord {
       folder_url: String(drive.folder_url || ''),
       connected_at: drive.connected_at || null,
     },
+    notify_prefs: normalizeNotifyPrefs(row.notify_prefs),
+  };
+}
+
+/** Tùy chọn nhận tin riêng: thiếu trường nào thì dùng mặc định của trường đó. */
+export function normalizeNotifyPrefs(row: any): UserRecord['notify_prefs'] {
+  const base = DEFAULT_USER_NOTIFY_PREFS;
+  if (!row || typeof row !== 'object') return { ...base };
+  return {
+    enabled: row.enabled === undefined ? base.enabled : Boolean(row.enabled),
+    digest: row.digest === undefined ? base.digest : Boolean(row.digest),
+    reminders: row.reminders === undefined ? base.reminders : Boolean(row.reminders),
+    tasks: row.tasks === undefined ? base.tasks : Boolean(row.tasks),
+    push: row.push === undefined ? base.push : Boolean(row.push),
   };
 }
 
@@ -279,6 +300,11 @@ function normalizeNotificationConfig(row: any): NotificationConfig {
       bot_token: String(row?.telegram?.bot_token || ''),
       chat_id: String(row?.telegram?.chat_id || ''),
     },
+    zalo: {
+      enabled: Boolean(row?.zalo?.enabled),
+      access_token: String(row?.zalo?.access_token || ''),
+      recipient_id: String(row?.zalo?.recipient_id || ''),
+    },
     email: {
       enabled: Boolean(row?.email?.enabled),
       smtp_host: String(row?.email?.smtp_host || ''),
@@ -319,6 +345,39 @@ function normalizeTrash(row: any): TrashRecord {
   };
 }
 
+function normalizeComment(row: any): EventComment {
+  return {
+    id: String(row?.id ?? newId('cm')),
+    event_id: String(row?.event_id ?? ''),
+    author: String(row?.author || 'Ẩn danh').slice(0, 120),
+    text: String(row?.text || '').slice(0, 2000),
+    created_at: row?.created_at || new Date().toISOString(),
+  };
+}
+
+function normalizeVersion(row: any): EventVersion {
+  return {
+    id: String(row?.id ?? newId('ver')),
+    event_id: String(row?.event_id ?? ''),
+    at: row?.at || new Date().toISOString(),
+    actor: String(row?.actor || 'hệ thống').slice(0, 120),
+    action: String(row?.action || 'update').slice(0, 60),
+    changed: Array.isArray(row?.changed) ? row.changed.map(String).slice(0, 40) : [],
+    snapshot: row?.snapshot && typeof row.snapshot === 'object' ? row.snapshot : {},
+  };
+}
+
+function normalizePushSubscription(row: any): PushSubscriptionRecord {
+  return {
+    id: String(row?.id ?? newId('push')),
+    user_id: String(row?.user_id ?? ''),
+    endpoint: String(row?.endpoint || ''),
+    p256dh: String(row?.p256dh || ''),
+    auth: String(row?.auth || ''),
+    created_at: row?.created_at || new Date().toISOString(),
+  };
+}
+
 function emptyState(): StoreState {
   return {
     schema_version: SCHEMA_VERSION,
@@ -344,6 +403,10 @@ function emptyState(): StoreState {
     notification_log: [],
     last_digest_date: '',
     sent_reminders: [],
+    event_comments: [],
+    event_versions: [],
+    push_subscriptions: [],
+    ics_token: '',
   };
 }
 
@@ -400,6 +463,10 @@ export function migrateState(parsed: Record<string, any>): StoreState {
       published_at: row.published_at || new Date().toISOString(),
       event_ids: parseJsonList(row.event_ids),
       share_token: /^[a-f0-9]{16,48}$/i.test(String(row.share_token || '')) ? String(row.share_token) : '',
+      share_expires_at: row.share_expires_at && !Number.isNaN(new Date(row.share_expires_at).getTime())
+        ? new Date(row.share_expires_at).toISOString()
+        : null,
+      share_pin: /^\d{4,6}$/.test(String(row.share_pin || '')) ? String(row.share_pin) : '',
     })),
     trash: (parsed.trash || []).map(normalizeTrash).slice(-TRASH_LIMIT),
     share_access: (parsed.share_access || []).map((row: any): ShareAccessRecord => ({
@@ -425,6 +492,10 @@ export function migrateState(parsed: Record<string, any>): StoreState {
     sent_reminders: Array.isArray(parsed.sent_reminders)
       ? parsed.sent_reminders.map(String).slice(-SENT_REMINDER_LIMIT)
       : [],
+    event_comments: (parsed.event_comments || []).map(normalizeComment).slice(-5000),
+    event_versions: (parsed.event_versions || []).map(normalizeVersion).slice(-5000),
+    push_subscriptions: (parsed.push_subscriptions || []).map(normalizePushSubscription).slice(-PUSH_SUBSCRIPTION_LIMIT),
+    ics_token: /^[a-f0-9]{16,64}$/i.test(String(parsed.ics_token || '')) ? String(parsed.ics_token) : '',
     audit_log: (parsed.audit_log || []).map((row: any): AuditEntry => ({
       id: String(row.id ?? newId('log')),
       at: row.at || new Date().toISOString(),
@@ -482,8 +553,15 @@ export function rememberLesson(lesson: Omit<MemoryRecord, 'id' | 'created_at'>):
 }
 
 /** Ghi một lần ban hành tuần, giữ tối đa PUBLICATION_LIMIT dòng gần nhất. */
-export function rememberPublication(pub: Omit<PublicationRecord, 'id' | 'published_at' | 'share_token'>): PublicationRecord {
-  const record: PublicationRecord = { ...pub, share_token: '', id: newId('pb'), published_at: new Date().toISOString() };
+export function rememberPublication(pub: Omit<PublicationRecord, 'id' | 'published_at' | 'share_token' | 'share_expires_at' | 'share_pin'>): PublicationRecord {
+  const record: PublicationRecord = {
+    ...pub,
+    share_token: '',
+    share_expires_at: null,
+    share_pin: '',
+    id: newId('pb'),
+    published_at: new Date().toISOString(),
+  };
   const s = getState();
   s.publications.push(record);
   if (s.publications.length > PUBLICATION_LIMIT) s.publications = s.publications.slice(-PUBLICATION_LIMIT);
@@ -579,6 +657,69 @@ export function noteShareAccess(token: string, weekStart: string): void {
   if (s.share_access.length > SHARE_ACCESS_LIMIT) {
     s.share_access = s.share_access.slice(-SHARE_ACCESS_LIMIT);
   }
+}
+
+/** Ghi một ý kiến duyệt lịch; mỗi mục lịch giữ tối đa EVENT_COMMENT_LIMIT ý kiến. */
+export function addEventComment(eventId: string, author: string, text: string): EventComment {
+  const s = getState();
+  const record: EventComment = {
+    id: newId('cm'),
+    event_id: eventId,
+    author: String(author || 'Ẩn danh').slice(0, 120),
+    text: String(text || '').slice(0, 2000),
+    created_at: new Date().toISOString(),
+  };
+  s.event_comments.push(record);
+  const mine = s.event_comments.filter((c) => c.event_id === eventId);
+  if (mine.length > EVENT_COMMENT_LIMIT) {
+    const drop = new Set(mine.slice(0, mine.length - EVENT_COMMENT_LIMIT).map((c) => c.id));
+    s.event_comments = s.event_comments.filter((c) => !drop.has(c.id));
+  }
+  return record;
+}
+
+/** Ghi lịch sử thay đổi của một mục lịch; giữ EVENT_VERSION_LIMIT bản gần nhất mỗi mục. */
+export function addEventVersion(
+  eventId: string,
+  actor: string,
+  action: string,
+  changed: string[],
+  snapshot: Partial<EventRecord>,
+): EventVersion {
+  const s = getState();
+  const record: EventVersion = {
+    id: newId('ver'),
+    event_id: eventId,
+    at: new Date().toISOString(),
+    actor: String(actor || 'hệ thống').slice(0, 120),
+    action: String(action || 'update').slice(0, 60),
+    changed: changed.slice(0, 40),
+    snapshot: { ...snapshot },
+  };
+  s.event_versions.push(record);
+  const mine = s.event_versions.filter((v) => v.event_id === eventId);
+  if (mine.length > EVENT_VERSION_LIMIT) {
+    const drop = new Set(mine.slice(0, mine.length - EVENT_VERSION_LIMIT).map((v) => v.id));
+    s.event_versions = s.event_versions.filter((v) => !drop.has(v.id));
+  }
+  return record;
+}
+
+/** Khoá feed .ics dùng chung; sinh một lần rồi giữ nguyên cho tới khi quản trị viên đổi. */
+export function ensureIcsToken(): string {
+  const s = getState();
+  if (!s.ics_token) {
+    s.ics_token = crypto.randomBytes(20).toString('hex');
+    persist();
+  }
+  return s.ics_token;
+}
+
+export function rotateIcsToken(): string {
+  const s = getState();
+  s.ics_token = crypto.randomBytes(20).toString('hex');
+  persist();
+  return s.ics_token;
 }
 
 /**

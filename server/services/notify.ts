@@ -1,7 +1,7 @@
 import { getState, mutate, persist, rememberNotification, markReminderSent } from '../store.ts';
 import { eventsBetween } from '../store.ts';
 import { signWebhookBody } from './webhook.ts';
-import { formatDdMmYyyy, toIso } from '../utils/dates.ts';
+import { formatDdMmYyyy, toIso, addDays } from '../utils/dates.ts';
 import type { EventRecord, NotificationConfig } from '../types.ts';
 
 const TELEGRAM_API = 'https://api.telegram.org';
@@ -183,6 +183,16 @@ export async function notifyAll(kind: 'digest' | 'reminder' | 'test' | 'publish'
   return results;
 }
 
+export function buildTaskReminderText(ev: EventRecord, taskText: string, owner: string, dueDate: string, dueToday: boolean): string {
+  return [
+    dueToday ? '⏰ <b>Hạn chuẩn bị hôm nay</b>' : '⏰ <b>Hạn chuẩn bị ngày mai</b>',
+    escapeHtml(taskText),
+    `📅 Hạn: ${formatDdMmYyyy(dueDate)}`,
+    `🗓 Việc của: ${escapeHtml(ev.title)} (${formatDdMmYyyy(ev.event_date)} ${ev.start_time})`,
+    owner ? `👤 Phụ trách: ${escapeHtml(owner)}` : '',
+  ].filter(Boolean).join('\n');
+}
+
 function minutesUntil(ev: EventRecord, now: Date): number | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ev.event_date) || !/^\d{2}:\d{2}$/.test(ev.start_time)) return null;
   const target = new Date(`${ev.event_date}T${ev.start_time}:00`);
@@ -246,7 +256,36 @@ export async function runSchedulerTick(now = new Date()): Promise<SchedulerRunRe
     }
   }
 
-  return { digest_sent: digestSent, reminders_sent: reminders, notes };
+  // Nhắc hạn chuẩn bị (tasks) — gửi một lần mỗi ngày sau giờ bản tin, cho hạn hôm nay và ngày mai.
+  let taskReminders = 0;
+  if (config.reminder_enabled && hhmm >= config.daily_digest_time) {
+    const sentTasks = new Set(getState().sent_reminders);
+    const todayDate = today;
+    const tomorrowDate = addDays(today, 1);
+    for (const ev of getState().events) {
+      if (ev.status === 'REJECTED' || ev.status === 'DRAFT') continue;
+      for (const task of ev.tasks || []) {
+        if (task.done || !task.due_date) continue;
+        if (task.due_date !== todayDate && task.due_date !== tomorrowDate) continue;
+        const key = `task|${ev.id}|${task.id}|${task.due_date}`;
+        if (sentTasks.has(key)) continue;
+        const text = buildTaskReminderText(ev, task.text, task.owner, task.due_date, task.due_date === todayDate);
+        await notifyAll('reminder', `Hạn chuẩn bị: ${task.text}`, text);
+        markReminderSent(key);
+        sentTasks.add(key);
+        taskReminders += 1;
+      }
+    }
+    if (taskReminders) {
+      mutate((s) => {
+        s.sent_reminders = s.sent_reminders.slice(-500);
+      });
+      persist();
+      notes.push(`Đã nhắc ${taskReminders} hạn chuẩn bị`);
+    }
+  }
+
+  return { digest_sent: digestSent, reminders_sent: reminders + taskReminders, notes };
 }
 
 let timer: NodeJS.Timeout | null = null;

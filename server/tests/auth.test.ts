@@ -27,7 +27,7 @@ import {
   verifyPassword,
 } from '../auth.ts';
 import type { SessionRecord, UserRecord } from '../types.ts';
-import { DEFAULT_DRIVE_SETUP } from '../types.ts';
+import { DEFAULT_DRIVE_SETUP, DEFAULT_USER_NOTIFY_PREFS } from '../types.ts';
 
 function user(over: Partial<UserRecord> = {}): UserRecord {
   const base: UserRecord = {
@@ -43,6 +43,7 @@ function user(over: Partial<UserRecord> = {}): UserRecord {
     email: '',
     google_sub: '',
     drive_setup: { ...DEFAULT_DRIVE_SETUP },
+    notify_prefs: { ...DEFAULT_USER_NOTIFY_PREFS },
   };
   return { ...base, ...over };
 }

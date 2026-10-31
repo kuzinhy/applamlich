@@ -153,9 +153,58 @@ export interface SettingsRecord {
   signal_learned_assignments: Record<string, string[]>;
 }
 
+/** Một bình luận/ý kiến trong quy trình duyệt lịch. */
+export interface EventComment {
+  id: string;
+  event_id: string;
+  author: string;
+  text: string;
+  created_at: string;
+}
+
+/** Ảnh chụp nhanh trước khi sửa, để đối soát ai đổi gì. */
+export interface EventVersion {
+  id: string;
+  event_id: string;
+  at: string;
+  actor: string;
+  action: string;
+  changed: string[];
+  snapshot: Partial<EventRecord>;
+}
+
+/** Thiết bị đã đồng ý nhận thông báo đẩy (Web Push, miễn phí, không cần dịch vụ ngoài). */
+export interface PushSubscriptionRecord {
+  id: string;
+  user_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  created_at: string;
+}
+
+/** Tùy chọn nhận tin riêng của từng tài khoản. */
+export interface UserNotifyPrefs {
+  enabled: boolean;
+  digest: boolean;
+  reminders: boolean;
+  tasks: boolean;
+  push: boolean;
+}
+
+export const DEFAULT_USER_NOTIFY_PREFS: UserNotifyPrefs = {
+  enabled: true,
+  digest: true,
+  reminders: true,
+  tasks: true,
+  push: false,
+};
+
 export interface NotificationConfig {
   enabled: boolean;
   telegram: { enabled: boolean; bot_token: string; chat_id: string };
+  /** Zalo OA: gửi tin qua API chính thức, dùng access token của OA. */
+  zalo: { enabled: boolean; access_token: string; recipient_id: string };
   email: {
     enabled: boolean;
     smtp_host: string;
@@ -234,6 +283,8 @@ export interface UserRecord {
   /** `sub` trong token Google — danh tính ổn định, không đổi khi người dùng đổi email. */
   google_sub: string;
   drive_setup: DriveSetupRecord;
+  /** Tùy chọn nhận thông báo riêng của tài khoản này. */
+  notify_prefs: UserNotifyPrefs;
 }
 
 export interface SessionRecord {
@@ -308,6 +359,10 @@ export interface PublicationRecord {
   event_ids: string[];
   /** Chuỗi ngẫu nhiên để mở trang chia sẻ công khai; trống = chưa chia sẻ. */
   share_token: string;
+  /** ISO hết hạn của link công khai; null = không đặt hạn. */
+  share_expires_at: string | null;
+  /** Mã PIN 4–6 số để mở link công khai; trống = ai có link cũng xem được. */
+  share_pin: string;
 }
 
 /** Sự kiện đã xoá vẫn giữ nguyên bản ghi để khôi phục khi xoá nhầm. */
@@ -360,6 +415,14 @@ export interface StoreState {
   last_digest_date: string;
   /** Các khóa nhắc đã gửi, dạng `eventId|mốc giờ`. */
   sent_reminders: string[];
+  /** Ý kiến/ghi chú trong quy trình duyệt lịch. */
+  event_comments: EventComment[];
+  /** Lịch sử thay đổi của từng mục lịch (ảnh chụp trước khi sửa). */
+  event_versions: EventVersion[];
+  /** Thiết bị đã đăng ký nhận Web Push. */
+  push_subscriptions: PushSubscriptionRecord[];
+  /** Khoá bí mật của feed .ics dùng chung; đổi khoá = huỷ mọi đăng ký cũ. */
+  ics_token: string;
 }
 
 export const DEFAULT_ADVISOR_UNIT = 'Ban Xây dựng Đảng';
@@ -388,6 +451,7 @@ export const DEFAULT_SETTINGS: SettingsRecord = {
 export const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
   enabled: false,
   telegram: { enabled: false, bot_token: '', chat_id: '' },
+  zalo: { enabled: false, access_token: '', recipient_id: '' },
   email: {
     enabled: false, smtp_host: '', smtp_port: 587, secure: false,
     user: '', pass: '', from: '', to: [],
@@ -414,6 +478,12 @@ export const EVENT_TASK_LIMIT = 20;
 /** Sự kiện đã xoá giữ lại để khôi phục. */
 export const TRASH_LIMIT = 100;
 export const SHARE_ACCESS_LIMIT = 300;
+/** Số ý kiến tối đa lưu cho mỗi mục lịch. */
+export const EVENT_COMMENT_LIMIT = 100;
+/** Số phiên bản tối đa lưu cho mỗi mục lịch. */
+export const EVENT_VERSION_LIMIT = 30;
+/** Số thiết bị nhận Web Push tối đa. */
+export const PUSH_SUBSCRIPTION_LIMIT = 100;
 
 export const DEFAULT_WEBHOOK_CONFIG: WebhookConfig = {
   enabled: false,
