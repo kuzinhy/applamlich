@@ -21,6 +21,8 @@ export default function SidebarV2({
 }) {
   const mainItems = [
     { id: 'calendar', label: 'Lịch công tác', icon: Calendar },
+    { id: 'signals', label: 'Nhận diện thành phần', icon: ScanSearch },
+    { id: 'advisor', label: 'Tham mưu lịch Ban', icon: Sparkles },
     { id: 'dashboard', label: 'Tổng quan tuần', icon: Home },
     { id: 'sources', label: 'Nguồn & Tiếp nhận tệp', icon: Layers },
     { id: 'proposed', label: 'Đề xuất chờ duyệt', icon: Lightbulb, badge: proposedCount },

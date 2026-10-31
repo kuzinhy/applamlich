@@ -113,8 +113,8 @@ export function parseNaturalLanguageEvent(rawText, mondayIso) {
   }
 
   // 4. Nhận dạng Chủ trì:
-  // Dạng A: "[Ai đó] chủ trì" -> ví dụ: "Đ/c Chủ tịch chủ trì", "do Đ/c A chủ trì"
-  const chairBeforeMatch = remaining.match(/(?:do\s+)?((?:đ\/c|đồng chí|ông|bà|lãnh đạo|thường trực|chủ tịch|phó chủ tịch|giám đốc|trưởng ban|phó trưởng ban)[^,;\.\n]*?)\s+chủ\s*trì/i);
+  // Dạng A: "[Ai đó] chủ trì" -> ví dụ: "Đ/c Trưởng ban xây dựng đảng chủ trì", "Đ/c Chủ tịch chủ trì", "do Đ/c Bí thư Đảng ủy chủ trì"
+  const chairBeforeMatch = remaining.match(/(?:do\s+)?((?:đ\/c|đồng chí|ông|bà|lãnh đạo|thường trực|bí thư|phó bí thư|chủ tịch|phó chủ tịch|giám đốc|trưởng ban(?:\s+xây\s+dựng\s+đảng|\s+bxdd|\s+bxdđ)?|phó\s+trưởng\s+ban(?:\s+xây\s+dựng\s+đảng|\s+bxdd|\s+bxdđ)?|tb\s+bxdd|ptb\s+bxdd|ban\s+thường\s+vụ|btv|thường\s+trực\s+đảng\s+ủy)[^,;\.\n]*?)\s+chủ\s*trì/i);
   // Dạng B: "chủ trì: [Ai đó]"
   const chairAfterMatch = remaining.match(/chủ\s*trì[:\s]+([^,;\.\n]+?)(?=\s+(?:thành phần|mời|chuẩn bị|tại|ở|$|[,;\.]))/i);
 

@@ -175,8 +175,8 @@ export function heuristicExtractEvents(
 
     let chair = '';
     const chairMatch = text.match(/(?:chủ\s*trì:?|do\s+)(.+?)(?=\s+(?:thành phần|mời|địa điểm|thời gian|$|[\n\r;\.]))/i) ||
-      text.match(/(?:đ\/c|đồng chí|ông|bà)\s+([^\n\r,;\.]+?)\s+chủ\s*trì/i);
-    if (chairMatch) chair = chairMatch[1].replace(/chủ\s*trì/gi, '').trim();
+      text.match(/(?:do\s+)?((?:đ\/c|đồng chí|ông|bà|lãnh đạo|thường trực|bí thư|phó bí thư|chủ tịch|phó chủ tịch|giám đốc|trưởng ban(?:\s+xây\s+dựng\s+đảng|\s+bxdd|\s+bxdđ)?|phó\s+trưởng\s+ban(?:\s+xây\s+dựng\s+đảng|\s+bxdd|\s+bxdđ)?|tb\s+bxdd|ptb\s+bxdd|ban\s+thường\s+vụ|btv|thường\s+trực\s+đảng\s+ủy)[^\n\r,;\.]+?)\s+chủ\s*trì/i);
+    if (chairMatch) chair = (chairMatch[1] || chairMatch[0]).replace(/chủ\s*trì/gi, '').trim();
 
     let participants = '';
     const partMatch = text.match(/(?:thành\s*phần:?|mời:?|thành\s*phần\s*mời:?)\s*([^\n\r\.\;]+)/i);
@@ -246,7 +246,7 @@ export function heuristicExtractEvents(
     for (const raw of rawEvents) {
       const locMatch = raw.text.match(/(?:tại|ở|địa điểm:?)\s+([^,;\.\n]+)/i);
       const chairMatch = raw.text.match(/(?:chủ\s*trì:?|do\s+)(.+?)(?=\s+(?:thành phần|mời|địa điểm|$|[,;\.]))/i) ||
-        raw.text.match(/(?:đ\/c|đồng chí)\s+([^,;\.\n]+?)\s+chủ\s*trì/i);
+        raw.text.match(/(?:do\s+)?((?:đ\/c|đồng chí|ông|bà|lãnh đạo|thường trực|bí thư|phó bí thư|chủ tịch|phó chủ tịch|giám đốc|trưởng ban(?:\s+xây\s+dựng\s+đảng|\s+bxdd|\s+bxdđ)?|phó\s+trưởng\s+ban(?:\s+xây\s+dựng\s+đảng|\s+bxdd|\s+bxdđ)?|tb\s+bxdd|ptb\s+bxdd|ban\s+thường\s+vụ|btv|thường\s+trực\s+đảng\s+ủy)[^\n\r,;\.]+?)\s+chủ\s*trì/i);
       const partMatch = raw.text.match(/(?:thành\s*phần:?|mời:?)\s+([^,;\.\n]+)/i);
 
       const title = raw.text

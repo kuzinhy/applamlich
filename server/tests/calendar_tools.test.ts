@@ -66,3 +66,17 @@ test('formatWeekForZalo sinh cấu trúc tin nhắn đẹp mắt, đủ thứ ng
   assert.match(output, /📍 Phòng 1/);
   assert.match(output, /👤 Chủ trì: Đ\/c Trưởng cơ quan/);
 });
+
+test('parseNaturalLanguageEvent nhận diện chức danh Trưởng ban xây dựng đảng và Ban Thường vụ', () => {
+  const weekStart = '2026-11-02';
+  const input = '8h30 sáng thứ 4 họp Ban Thường vụ Đảng ủy tại Hội trường B, Đ/c Trưởng ban xây dựng đảng chủ trì, VP Đảng ủy chuẩn bị tài liệu';
+  const result = parseNaturalLanguageEvent(input, weekStart);
+
+  assert.ok(result);
+  assert.equal(result.event_date, '2026-11-04'); // Thứ Tư
+  assert.equal(result.start_time, '08:30');
+  assert.match(result.chair, /Trưởng ban xây dựng đảng/i);
+  assert.match(result.location, /Hội trường B/i);
+  assert.match(result.preparation, /VP Đảng ủy chuẩn bị tài liệu/i);
+  assert.match(result.title, /họp Ban Thường vụ Đảng ủy/i);
+});
