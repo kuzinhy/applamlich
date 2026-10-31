@@ -25,6 +25,8 @@ import ExportView from './components/ExportView';
 import HelpView from './components/HelpView';
 import PublishResultModal from './components/PublishResultModal';
 import ShortcutHelpModal from './components/ShortcutHelpModal';
+import QuickAddModal from './components/QuickAddModal';
+import { formatWeekForZalo, copyToClipboard } from './utils/zaloFormatter';
 import { api, currentWeekStart, mondayOf } from './services/api';
 import { WifiOff, Download, HardDrive } from 'lucide-react';
 
@@ -71,6 +73,7 @@ export default function App() {
   const [eventToEdit, setEventToEdit] = useState(null);
   const [editFocusField, setEditFocusField] = useState('');
   const [publishResult, setPublishResult] = useState(null);
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
   // Điều hướng & khả năng đọc: ngăn kéo menu trên màn hình hẹp, cỡ chữ lưu trên máy.
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -177,7 +180,10 @@ export default function App() {
       const el = document.activeElement;
       const typing = el && (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable);
       if (typing) return;
-      if (e.key === 'n' || e.key === 'N') {
+      if (e.key === 'q' || e.key === 'Q') {
+        e.preventDefault();
+        setIsQuickAddOpen(true);
+      } else if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         handleOpenCreateEventOnSlot({ event_date: weekStart });
       } else if (e.key === 't' || e.key === 'T') {
@@ -492,6 +498,24 @@ export default function App() {
     }
   };
 
+  const handleCopyZalo = async () => {
+    if (!weekData) {
+      showToast('Chưa có dữ liệu lịch tuần.');
+      return;
+    }
+    try {
+      const text = formatWeekForZalo(weekData, settings);
+      const success = await copyToClipboard(text);
+      if (success) {
+        showToast('Đã sao chép lịch tuần định dạng Zalo vào bộ nhớ tạm! Có thể dán gửi ngay.');
+      } else {
+        showToast('Không sao chép được văn bản vào clipboard.');
+      }
+    } catch (err) {
+      showToast('Lỗi sao chép: ' + err.message);
+    }
+  };
+
   const conflictIds = new Set(
     (weekData?.conflicts || []).filter((c) => c.status === 'OPEN').flatMap((c) => [c.event_id_1, c.event_id_2])
   );
@@ -758,6 +782,8 @@ export default function App() {
               <CommandBar
                 onUploadClick={() => fileInputRef.current?.click()}
                 onScanMailClick={() => { setPasteModalMode('paste'); setIsPasteModalOpen(true); }}
+                onOpenQuickAdd={() => setIsQuickAddOpen(true)}
+                onCopyZalo={handleCopyZalo}
                 onAIGenerate={handleAIGenerateCalendar}
                 onDetectConflicts={() => setActiveTab('conflicts')}
                 onPublish={handlePublishWeek}
@@ -774,6 +800,7 @@ export default function App() {
                 proposedCount={proposedEvents.length}
                 sourcesCount={sources.length}
                 publishedCount={weekData?.stats?.published || 0}
+                isOfficialDocMode={isOfficialDocMode}
               />
 
               <div className="tg-calendar-row">
@@ -852,6 +879,17 @@ export default function App() {
         onClose={() => setIsPasteModalOpen(false)}
         onSubmit={handlePasteSubmit}
         initialMode={pasteModalMode}
+      />
+
+      <QuickAddModal
+        isOpen={isQuickAddOpen}
+        onClose={() => setIsQuickAddOpen(false)}
+        weekStart={weekStart}
+        onSave={handleSaveEvent}
+        onOpenFullEdit={(prefilledData) => {
+          setEventToEdit(prefilledData);
+          setIsEditModalOpen(true);
+        }}
       />
 
       <PublishResultModal

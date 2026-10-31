@@ -20,16 +20,12 @@ export default function SidebarV2({
   onClose,
 }) {
   const mainItems = [
-    { id: 'dashboard', label: 'Tổng quan', icon: Home },
-    { id: 'brain', label: 'Bộ não AI (Drive)', icon: Brain, badge: 'Drive' },
-    { id: 'advisor', label: 'Tham mưu lịch BXDĐ', icon: Sparkles, badge: 'Mới' },
-    { id: 'signals', label: 'Nhận diện thành phần', icon: ScanSearch },
     { id: 'calendar', label: 'Lịch công tác', icon: Calendar },
-    { id: 'sources', label: 'Nguồn lịch', icon: Layers },
-    { id: 'proposed', label: 'Sự kiện đề xuất', icon: Lightbulb, badge: proposedCount },
-    { id: 'assistant', label: 'Trợ lý AI', icon: Bot, perm: 'ai:run' },
-    { id: 'templates', label: 'Mẫu lịch', icon: FileText },
-    { id: 'export', label: 'Xuất bản', icon: Send },
+    { id: 'dashboard', label: 'Tổng quan tuần', icon: Home },
+    { id: 'sources', label: 'Nguồn & Tiếp nhận tệp', icon: Layers },
+    { id: 'proposed', label: 'Đề xuất chờ duyệt', icon: Lightbulb, badge: proposedCount },
+    { id: 'assistant', label: 'Trợ lý AI lập lịch', icon: Bot, perm: 'ai:run' },
+    { id: 'export', label: 'Xuất bản & In ấn', icon: Send },
   ].filter((item) => !item.perm || can(item.perm));
 
   const adminItems = [
@@ -95,7 +91,7 @@ export default function SidebarV2({
         </nav>
 
         <div style={{ padding: '10px 12px', fontSize: '11px', color: '#94A3B8', borderTop: '1px solid #F1F5F9' }}>
-          Tuyên giáo số • Local Studio
+          Trợ lý Lịch công tác cơ quan
         </div>
       </aside>
     </>

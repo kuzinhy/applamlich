@@ -2,7 +2,8 @@ import React from 'react';
 import { X, Keyboard } from 'lucide-react';
 
 const SHORTCUTS = [
-  { keys: ['N'], label: 'Thêm mục lịch công tác mới' },
+  { keys: ['Q'], label: 'Tạo lịch nhanh bằng câu lệnh / tin nhắn Zalo' },
+  { keys: ['N'], label: 'Thêm mục lịch công tác (form đầy đủ)' },
   { keys: ['T'], label: 'Về tuần hiện tại' },
   { keys: ['←'], label: 'Tuần trước' },
   { keys: ['→'], label: 'Tuần sau' },

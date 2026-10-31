@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   UploadCloud, ScanLine, Sparkles, AlertTriangle, FileText, CalendarDays, Send,
   FileDown, FileSpreadsheet, FileType, ClipboardPaste, ChevronDown, ChevronUp,
-  Wrench, ListChecks, ShieldCheck,
+  Wrench, ListChecks, ShieldCheck, Zap, MessageSquare,
 } from 'lucide-react';
 
 /**
@@ -36,6 +36,8 @@ function Step({ index, icon, title, hint, next, children }) {
 export default function CommandBar({
   onUploadClick,
   onScanMailClick,
+  onOpenQuickAdd,
+  onCopyZalo,
   onAIGenerate,
   onDetectConflicts,
   onPublish,
@@ -48,6 +50,7 @@ export default function CommandBar({
   proposedCount = 0,
   sourcesCount = 0,
   publishedCount = 0,
+  isOfficialDocMode = false,
 }) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -75,11 +78,22 @@ export default function CommandBar({
         <Step
           index={1}
           icon={<UploadCloud size={16} />}
-          title="Nạp văn bản"
-          hint="DOCX, PDF, ảnh scan, Excel, TXT hoặc dán nội dung thư mời."
+          title="Nạp & Tạo lịch"
+          hint="Tải file, dán thư mời hoặc tạo nhanh bằng 1 câu lệnh ngắn."
           next={nextStep === 1}
         >
-          <button type="button" className="tg-step-btn primary" onClick={onUploadClick}>
+          {onOpenQuickAdd && (
+            <button
+              type="button"
+              className="tg-step-btn primary"
+              style={{ background: '#2563EB', color: '#FFFFFF' }}
+              onClick={onOpenQuickAdd}
+              title="Gõ hoặc dán tin nhắn để AI tự điền vào lịch"
+            >
+              <Zap size={13} /> Tạo nhanh
+            </button>
+          )}
+          <button type="button" className="tg-step-btn ghost" onClick={onUploadClick}>
             <UploadCloud size={13} /> Tải tệp lên
           </button>
           <button type="button" className="tg-step-btn ghost" onClick={onScanMailClick}>
@@ -126,22 +140,33 @@ export default function CommandBar({
           index={4}
           icon={<Send size={16} />}
           title="Ban hành & chia sẻ"
-          hint="Chốt số văn bản, tạo link xem trực tuyến và mã QR gửi đi."
+          hint="Xuất Word NĐ 30, sao chép gửi Zalo hoặc ban hành số hoá."
           next={nextStep === 4}
         >
+          {onCopyZalo && (
+            <button
+              type="button"
+              className="tg-step-btn"
+              style={{ background: '#0068FF', color: '#FFFFFF', borderColor: '#0068FF' }}
+              onClick={onCopyZalo}
+              title="Sao chép toàn bộ lịch tuần định dạng tin nhắn gửi Zalo/Mobile"
+            >
+              <MessageSquare size={13} /> Gửi Zalo
+            </button>
+          )}
           <button
             type="button"
             className={`tg-step-btn${nextStep === 4 ? ' primary' : ''}`}
             onClick={onPublish}
           >
-            <ShieldCheck size={13} /> Ban hành tuần này
+            <ShieldCheck size={13} /> Ban hành
           </button>
           <button
             type="button"
             className="tg-step-btn ghost"
             onClick={onOpenDocument || onExportDocument}
           >
-            <FileText size={13} /> Xem trang giấy A4
+            <FileText size={13} /> {isOfficialDocMode ? 'Xem lưới' : 'Bản in A4'}
           </button>
         </Step>
       </div>
@@ -165,6 +190,16 @@ export default function CommandBar({
 
         {toolsOpen && (
           <div className="tg-tools-body">
+            {onOpenQuickAdd && (
+              <button type="button" className="tg-tool-chip" onClick={onOpenQuickAdd}>
+                <Zap size={13} color="#2563EB" /> Nhập nhanh bằng câu lệnh
+              </button>
+            )}
+            {onCopyZalo && (
+              <button type="button" className="tg-tool-chip" onClick={onCopyZalo}>
+                <MessageSquare size={13} color="#0068FF" /> Sao chép gửi Zalo
+              </button>
+            )}
             <button type="button" className="tg-tool-chip" onClick={onDetectConflicts}>
               <AlertTriangle size={13} color="#D97706" /> Phát hiện trùng lịch
             </button>
