@@ -18,10 +18,18 @@ import PartyDetectionView from './components/PartyDetectionView';
 import LoginView from './components/LoginView';
 import DriveSetupWizard from './components/DriveSetupWizard';
 import UsersView from './components/UsersView';
-import { api, currentWeekStart } from './services/api';
+import DashboardView from './components/DashboardView';
+import ProposedView from './components/ProposedView';
+import TemplatesView from './components/TemplatesView';
+import ExportView from './components/ExportView';
+import HelpView from './components/HelpView';
+import PublishResultModal from './components/PublishResultModal';
+import ShortcutHelpModal from './components/ShortcutHelpModal';
+import { api, currentWeekStart, mondayOf } from './services/api';
 import { WifiOff, Download, HardDrive } from 'lucide-react';
 
 const pad2 = (n) => String(n).padStart(2, '0');
+const FONT_ZOOMS = [0.92, 1, 1.1];
 
 function addDaysIso(iso, days) {
   const d = new Date(`${iso}T00:00:00`);
@@ -61,6 +69,26 @@ export default function App() {
   const [pasteModalMode, setPasteModalMode] = useState('paste');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [eventToEdit, setEventToEdit] = useState(null);
+  const [editFocusField, setEditFocusField] = useState('');
+  const [publishResult, setPublishResult] = useState(null);
+
+  // Điều hướng & khả năng đọc: ngăn kéo menu trên màn hình hẹp, cỡ chữ lưu trên máy.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [fontLevel, setFontLevel] = useState(() => {
+    try {
+      const raw = localStorage.getItem('tg:font-level-v2');
+      if (raw === null) return 1;
+      const saved = Number(raw);
+      return Number.isInteger(saved) && saved >= 0 && saved < FONT_ZOOMS.length ? saved : 1;
+    } catch {
+      return 1;
+    }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('tg:font-level-v2', String(fontLevel)); } catch { /* chặn lưu trữ */ }
+  }, [fontLevel]);
 
   const fileInputRef = useRef(null);
 
@@ -73,18 +101,17 @@ export default function App() {
 
   const loadData = async (week = weekStart) => {
     try {
-      const [state, srcList, propList, confList, weekCalendar] = await Promise.all([
+      // Một lần /state đã đủ cho lịch, nguồn và đề xuất; chỉ /conflicts cần thêm
+      // vì màn xung đột cần bản ghi sự kiện đầy đủ của cả hai phía.
+      const [state, confList] = await Promise.all([
         api.getState(week),
-        api.getSources(),
-        api.getProposedEvents(),
         api.getConflicts(),
-        api.getWeekCalendar(week),
       ]);
       setSettings(state.settings);
-      setSources(srcList);
-      setProposedEvents(propList);
+      setSources(state.sources || []);
+      setProposedEvents(state.proposed_events || []);
       setConflicts(confList);
-      setWeekData(weekCalendar);
+      setWeekData(api.weekCalendarFromState(state));
     } catch (err) {
       console.error('Error loading data:', err);
       setToastMessage(`Không nạp được dữ liệu: ${err.message}`);
@@ -129,11 +156,24 @@ export default function App() {
     showToast(`Đã đưa về tuần hiện tại`);
   };
 
-  /** Phím tắt: n thêm lịch, t về tuần này, ←/→ chuyển tuần, / tìm kiếm. */
+  /** Bấm một ngày trong lưới tháng -> nhảy về tuần chứa ngày đó. */
+  const goToDate = (isoDate) => {
+    if (!isoDate) return;
+    const target = mondayOf(isoDate);
+    setWeekStart(target);
+    showToast(`Đã mở tuần ${target.split('-').reverse().join('/')}`);
+  };
+
+  /** Phím tắt: n thêm lịch, t về tuần này, ←/→ chuyển tuần, / tìm kiếm, ? trợ giúp. */
   useEffect(() => {
     if (!session) return undefined;
     const onKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'Escape') {
+        setShortcutsOpen(false);
+        setSidebarOpen(false);
+        return;
+      }
       const el = document.activeElement;
       const typing = el && (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable);
       if (typing) return;
@@ -155,6 +195,9 @@ export default function App() {
           e.preventDefault();
           search.focus();
         }
+      } else if (e.key === '?') {
+        e.preventDefault();
+        setShortcutsOpen(true);
       } else if (['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault();
         setActiveTab({ '1': 'dashboard', '2': 'calendar', '3': 'proposed', '4': 'conflicts' }[e.key]);
@@ -249,6 +292,7 @@ export default function App() {
       showToast(
         `Đã ban hành ${res.published} mục, số ${res.publication?.document_number || '…'}${res.open_conflicts ? ` · vẫn còn ${res.open_conflicts} xung đột mở` : ''}.`
       );
+      if (res.share?.url) setPublishResult(res);
     } catch (err) {
       showToast(`Không ban hành được: ${err.message}`);
     }
@@ -389,6 +433,7 @@ export default function App() {
   };
 
   const handleOpenCreateEventOnSlot = (slotData = {}) => {
+    setEditFocusField('');
     setEventToEdit({
       title: slotData.title || '',
       event_date: slotData.event_date || weekStart,
@@ -403,6 +448,15 @@ export default function App() {
       priority_score: slotData.priority_score || 80,
       status: 'DRAFT'
     });
+    setIsEditModalOpen(true);
+  };
+
+  /** Mở modal sửa và nhảy tới đúng trường vừa bấm trên trang giấy văn bản. */
+  const handleOpenEditEvent = (ev, field = '') => {
+    if (!ev) return;
+    setSelectedEventForPopover(null);
+    setEditFocusField(field || '');
+    setEventToEdit(ev);
     setIsEditModalOpen(true);
   };
 
@@ -468,7 +522,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F8FAFC' }}>
+    <div className="tg-shell tg-zoom" style={{ zoom: FONT_ZOOMS[fontLevel] }}>
       {toastMessage && (
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px', zIndex: 2000,
@@ -534,9 +588,11 @@ export default function App() {
         }}
         proposedCount={proposedEvents.length}
         can={can}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div className="tg-content">
         <TopbarV2
           unitName={settings?.unit_name || 'Đang tải dữ liệu…'}
           weekRange={weekData ? `${formatShortDate(weekData.start_date)} – ${formatShortDate(weekData.end_date)} (tuần ${weekData.week_number})` : ''}
@@ -549,9 +605,13 @@ export default function App() {
           onNextWeek={() => shiftWeek(7)}
           openConflicts={conflicts.length}
           onClickConflicts={() => setActiveTab('conflicts')}
+          onMenuClick={() => setSidebarOpen(true)}
+          onOpenHelp={() => setShortcutsOpen(true)}
+          fontLevel={fontLevel}
+          onFontLevelChange={setFontLevel}
         />
 
-        <main style={{ padding: '18px 24px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <main className="tg-main">
           {!isOnline && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px',
@@ -586,6 +646,37 @@ export default function App() {
           )}
           {activeTab === 'users' ? (
             <UsersView showToast={showToast} currentUserId={session.id} />
+          ) : activeTab === 'dashboard' ? (
+            <DashboardView
+              weekData={weekData}
+              sources={sources}
+              proposedEvents={proposedEvents}
+              conflicts={conflicts}
+              settings={settings}
+              onNavigate={setActiveTab}
+              onApprove={(id) => handleSetEventStatus(id, 'APPROVED')}
+              onReject={(id) => handleSetEventStatus(id, 'REJECTED')}
+              onSelectEvent={(ev) => setSelectedEventForPopover(ev)}
+              canInstall={Boolean(installPrompt)}
+              onInstall={handleInstall}
+            />
+          ) : activeTab === 'proposed' ? (
+            <ProposedView
+              proposals={proposedEvents}
+              can={can}
+              onRefresh={() => loadData()}
+              onApprove={(id) => handleSetEventStatus(id, 'APPROVED')}
+              onReject={(id) => handleSetEventStatus(id, 'REJECTED')}
+              onEdit={(ev) => handleOpenEditEvent(ev)}
+              onDelete={handleDeleteEvent}
+              onToast={showToast}
+            />
+          ) : activeTab === 'templates' ? (
+            <TemplatesView weekStart={weekStart} onToast={showToast} />
+          ) : activeTab === 'export' ? (
+            <ExportView weekStart={weekStart} onToast={showToast} can={can} />
+          ) : activeTab === 'help' ? (
+            <HelpView />
           ) : activeTab === 'settings' ? (
             <SettingsView settings={settings} onSaved={() => loadData()} showToast={showToast} can={can} session={session} onDataChanged={() => loadData()} />
           ) : activeTab === 'brain' || activeTab === 'assistant' ? (
@@ -657,10 +748,9 @@ export default function App() {
                 settings={settings}
                 onDataChanged={loadData}
                 onExportIcs={() => { window.location.href = api.exportUrls.ics(weekStart); }}
-                onSelectEvent={(ev) => {
-                  setEventToEdit(ev);
-                  setIsEditModalOpen(true);
-                }}
+                onEditField={handleOpenEditEvent}
+                onSelectEvent={(ev) => handleOpenEditEvent(ev)}
+                onAddEventForDate={(date) => handleOpenCreateEventOnSlot({ event_date: date, start_time: '08:00', end_time: '09:30' })}
               />
             </div>
           ) : (
@@ -672,6 +762,7 @@ export default function App() {
                 onDetectConflicts={() => setActiveTab('conflicts')}
                 onPublish={handlePublishWeek}
                 onExportDocument={() => window.open(api.exportUrls.document(weekStart), '_blank')}
+                onOpenDocument={() => setIsOfficialDocMode(true)}
                 onExportIcs={() => { window.location.href = api.exportUrls.ics(weekStart); }}
                 exportUrls={{
                   docx: api.exportUrls.docx(weekStart),
@@ -679,9 +770,13 @@ export default function App() {
                   pdf: api.exportUrls.pdf(weekStart),
                 }}
                 isBusy={isBusy}
+                onNavigate={setActiveTab}
+                proposedCount={proposedEvents.length}
+                sourcesCount={sources.length}
+                publishedCount={weekData?.stats?.published || 0}
               />
 
-              <div style={{ display: 'flex', gap: '16px', alignItems: 'stretch', flex: 1 }}>
+              <div className="tg-calendar-row">
                 <CalendarGridV2
                   days={weekData?.days || []}
                   weekStart={weekStart}
@@ -694,6 +789,7 @@ export default function App() {
                   onPrevWeek={() => shiftWeek(-7)}
                   onNextWeek={() => shiftWeek(7)}
                   onTodayClick={goToday}
+                  onMonthChange={goToDate}
                 />
 
                 <RightAIPanel
@@ -743,9 +839,7 @@ export default function App() {
         hasConflict={conflictIds.has(selectedEventForPopover?.id)}
         onClose={() => setSelectedEventForPopover(null)}
         onEdit={(ev) => {
-          setSelectedEventForPopover(null);
-          setEventToEdit(ev);
-          setIsEditModalOpen(true);
+          handleOpenEditEvent(ev);
         }}
         onFullDetail={(ev) => {
           setSelectedEventForPopover(null);
@@ -760,14 +854,23 @@ export default function App() {
         initialMode={pasteModalMode}
       />
 
+      <PublishResultModal
+        result={publishResult}
+        onClose={() => setPublishResult(null)}
+        onToast={showToast}
+      />
+
       <EditEventModal
         isOpen={isEditModalOpen}
         event={eventToEdit}
-        onClose={() => { setIsEditModalOpen(false); setEventToEdit(null); }}
+        focusField={editFocusField}
+        onClose={() => { setIsEditModalOpen(false); setEventToEdit(null); setEditFocusField(''); }}
         onSave={handleSaveEvent}
         onDelete={handleDeleteEvent}
         onDataChanged={() => loadData()}
       />
+
+      <ShortcutHelpModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }

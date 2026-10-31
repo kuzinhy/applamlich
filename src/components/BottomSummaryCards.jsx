@@ -50,7 +50,7 @@ export default function BottomSummaryCards({
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: 'repeat(4, 1fr)',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
       gap: '12px',
       marginTop: '16px'
     }}>

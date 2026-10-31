@@ -74,11 +74,11 @@ export default function RightAIPanel({
   };
 
   return (
-    <div style={{
-      width: '360px', flexShrink: 0, background: '#FFFFFF', borderRadius: '16px',
+    <div className="tg-ai-panel" style={{
+      background: '#FFFFFF', borderRadius: '16px',
       border: '1px solid #E5EAF2', padding: '18px', display: 'flex', flexDirection: 'column',
       gap: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-      maxHeight: 'calc(100vh - 120px)', overflowY: 'auto'
+      overflowY: 'auto'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

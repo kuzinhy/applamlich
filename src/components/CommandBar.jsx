@@ -1,57 +1,35 @@
 import React, { useState } from 'react';
-import { UploadCloud, ScanLine, Sparkles, AlertTriangle, FileText, CalendarDays, Send, FileDown, FileSpreadsheet, FileType } from 'lucide-react';
+import {
+  UploadCloud, ScanLine, Sparkles, AlertTriangle, FileText, CalendarDays, Send,
+  FileDown, FileSpreadsheet, FileType, ClipboardPaste, ChevronDown, ChevronUp,
+  Wrench, ListChecks, ShieldCheck,
+} from 'lucide-react';
 
-const TONES = {
-  blue: { bg: '#EFF6FF', fg: '#2563EB', hover: '#BFDBFE', shadow: 'rgba(37,99,235,0.06)' },
-  cyan: { bg: '#ECFEFF', fg: '#0891B2', hover: '#A5F3FC', shadow: 'rgba(6,182,212,0.06)' },
-  amber: { bg: '#FFFBEB', fg: '#D97706', hover: '#FDE68A', shadow: 'rgba(245,158,11,0.06)' },
-  green: { bg: '#ECFDF5', fg: '#047857', hover: '#A7F3D0', shadow: 'rgba(16,185,129,0.06)' },
-  violet: { bg: '#F5F3FF', fg: '#7C3AED', hover: '#DDD6FE', shadow: 'rgba(124,58,237,0.06)' },
-};
-
-function Tile({ tone = 'blue', icon, title, subtitle, onClick, disabled, primary }) {
-  const t = TONES[tone];
+/**
+ * Thanh công việc chính, xếp theo đúng thứ tự người dùng hay làm:
+ * nạp văn bản → AI bóc tách → duyệt đề xuất → ban hành & chia sẻ.
+ * Các tiện ích ít dùng được gom vào mục "Công cụ khác" (thu gọn mặc định).
+ */
+function Step({ index, icon, title, hint, next, children }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        background: primary ? '#2563EB' : '#FFFFFF',
-        border: primary ? '1px solid #1D4ED8' : '1px solid #E5EAF2',
-        borderRadius: '12px',
-        padding: '12px 14px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        cursor: disabled ? 'progress' : 'pointer',
-        boxShadow: primary ? '0 4px 12px rgba(37,99,235,0.25)' : '0 1px 2px rgba(0,0,0,0.02)',
-        textAlign: 'left',
-        opacity: disabled ? 0.6 : 1,
-        transition: 'all 0.15s ease'
-      }}
-      onMouseEnter={(e) => {
-        if (primary || disabled) { e.currentTarget.style.background = primary ? '#1D4ED8' : '#FFFFFF'; return; }
-        e.currentTarget.style.borderColor = t.hover;
-        e.currentTarget.style.boxShadow = `0 3px 8px ${t.shadow}`;
-      }}
-      onMouseLeave={(e) => {
-        if (primary) { e.currentTarget.style.background = '#2563EB'; return; }
-        e.currentTarget.style.borderColor = '#E5EAF2';
-        e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.02)';
-      }}
-    >
-      <div style={{
-        width: '36px', height: '36px', borderRadius: '8px', flexShrink: 0,
-        background: primary ? 'rgba(255,255,255,0.2)' : t.bg,
-        display: 'flex', alignItems: 'center', justifyContent: 'center'
-      }}>
-        {React.cloneElement(icon, { size: 18, color: primary ? '#FFFFFF' : t.fg })}
+    <div className={`tg-step${next ? ' is-next' : ''}`}>
+      <div className="tg-step-head">
+        <span className="tg-step-index">{index}</span>
+        <span style={{ color: next ? '#2563EB' : '#64748B', display: 'flex' }}>{icon}</span>
+        <span className="tg-step-title">{title}</span>
+        {next && (
+          <span style={{
+            marginLeft: 'auto', fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.3px',
+            color: '#1D4ED8', background: '#DBEAFE', borderRadius: '999px', padding: '2px 7px',
+            whiteSpace: 'nowrap',
+          }}>
+            BƯỚC TIẾP
+          </span>
+        )}
       </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: '13px', fontWeight: '700', color: primary ? '#FFFFFF' : '#0F2A5F' }}>{title}</div>
-        <div style={{ fontSize: '11px', color: primary ? '#DBEAFE' : '#64748B' }}>{subtitle}</div>
-      </div>
-    </button>
+      <div className="tg-step-hint">{hint}</div>
+      <div className="tg-step-actions">{children}</div>
+    </div>
   );
 }
 
@@ -62,112 +40,170 @@ export default function CommandBar({
   onDetectConflicts,
   onPublish,
   onExportDocument,
+  onOpenDocument,
   onExportIcs,
   exportUrls,
-  isBusy = false
+  isBusy = false,
+  onNavigate,
+  proposedCount = 0,
+  sourcesCount = 0,
+  publishedCount = 0,
 }) {
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const links = exportUrls || {};
+
   const pick = (url) => {
     if (!url) return;
     setExportOpen(false);
     window.location.href = url;
   };
 
+  // Gợi ý bước tiếp theo dựa trên dữ liệu đang có, không bắt người dùng tự đoán.
+  // 0 = đã xong tuần này, không cần nổi bật bước nào.
+  const nextStep = sourcesCount === 0
+    ? 1
+    : proposedCount > 0
+      ? 3
+      : publishedCount > 0
+        ? 0
+        : 2;
+
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(178px, 1fr))',
-      gap: '12px',
-      marginBottom: '16px'
-    }}>
-      <Tile
-        tone="blue"
-        icon={<UploadCloud />}
-        title="Tải văn bản"
-        subtitle="DOCX, PDF, ảnh scan, Excel, TXT"
-        onClick={onUploadClick}
-      />
-      <Tile
-        tone="cyan"
-        icon={<ScanLine />}
-        title="Dán thư mời"
-        subtitle="Nội dung email, công văn"
-        onClick={onScanMailClick}
-      />
-      <Tile
-        tone="blue"
-        primary
-        icon={<Sparkles />}
-        title={isBusy ? 'AI đang xử lý…' : 'AI tạo lịch tuần'}
-        subtitle="Bóc tách từ văn bản nguồn đã nạp"
-        onClick={onAIGenerate}
-        disabled={isBusy}
-      />
-      <Tile
-        tone="amber"
-        icon={<AlertTriangle />}
-        title="Phát hiện trùng"
-        subtitle="Giờ, lãnh đạo, thời gian di chuyển"
-        onClick={onDetectConflicts}
-      />
-      <div style={{ position: 'relative' }}>
-        <Tile
-          tone="violet"
-          icon={<FileDown />}
-          title="Tải Word / Excel / PDF"
-          subtitle="Bản .docx, .xlsx và PDF có dấu"
-          onClick={() => setExportOpen((v) => !v)}
-        />
-        {exportOpen && (
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 30,
-            background: '#FFFFFF', border: '1px solid #E5EAF2', borderRadius: '10px',
-            boxShadow: '0 10px 24px rgba(15,42,95,0.14)', overflow: 'hidden'
-          }}>
-            {[
-              { label: 'Word (.docx) — sửa thể thức', icon: <FileText size={14} />, url: links.docx },
-              { label: 'Excel (.xlsx) — lọc & tổng hợp', icon: <FileSpreadsheet size={14} />, url: links.xlsx },
-              { label: 'PDF — in, ký, phát hành', icon: <FileType size={14} />, url: links.pdf },
-            ].map((row) => (
+    <>
+      <div className="tg-flow">
+        <Step
+          index={1}
+          icon={<UploadCloud size={16} />}
+          title="Nạp văn bản"
+          hint="DOCX, PDF, ảnh scan, Excel, TXT hoặc dán nội dung thư mời."
+          next={nextStep === 1}
+        >
+          <button type="button" className="tg-step-btn primary" onClick={onUploadClick}>
+            <UploadCloud size={13} /> Tải tệp lên
+          </button>
+          <button type="button" className="tg-step-btn ghost" onClick={onScanMailClick}>
+            <ClipboardPaste size={13} /> Dán thư mời
+          </button>
+        </Step>
+
+        <Step
+          index={2}
+          icon={<Sparkles size={16} />}
+          title="AI bóc tách lịch"
+          hint="Đọc văn bản nguồn và đề xuất từng mục lịch cho tuần đang xem."
+          next={nextStep === 2}
+        >
+          <button
+            type="button"
+            className="tg-step-btn primary"
+            onClick={onAIGenerate}
+            disabled={isBusy}
+          >
+            <Sparkles size={13} /> {isBusy ? 'AI đang xử lý…' : 'Tạo lịch bằng AI'}
+          </button>
+        </Step>
+
+        <Step
+          index={3}
+          icon={<ListChecks size={16} />}
+          title="Duyệt đề xuất"
+          hint={proposedCount > 0
+            ? `${proposedCount} mục đang chờ duyệt — kiểm tra giờ, người chủ trì, địa điểm.`
+            : 'Không còn mục nào chờ duyệt. Có thể xem lại các mục đã xử lý.'}
+          next={nextStep === 3}
+        >
+          <button
+            type="button"
+            className={`tg-step-btn${nextStep === 3 ? ' primary' : ''}`}
+            onClick={() => onNavigate && onNavigate('proposed')}
+          >
+            <ListChecks size={13} /> Mở danh sách duyệt{proposedCount > 0 ? ` (${proposedCount})` : ''}
+          </button>
+        </Step>
+
+        <Step
+          index={4}
+          icon={<Send size={16} />}
+          title="Ban hành & chia sẻ"
+          hint="Chốt số văn bản, tạo link xem trực tuyến và mã QR gửi đi."
+          next={nextStep === 4}
+        >
+          <button
+            type="button"
+            className={`tg-step-btn${nextStep === 4 ? ' primary' : ''}`}
+            onClick={onPublish}
+          >
+            <ShieldCheck size={13} /> Ban hành tuần này
+          </button>
+          <button
+            type="button"
+            className="tg-step-btn ghost"
+            onClick={onOpenDocument || onExportDocument}
+          >
+            <FileText size={13} /> Xem trang giấy A4
+          </button>
+        </Step>
+      </div>
+
+      <div className="tg-tools">
+        <div className="tg-tools-head">
+          <button
+            type="button"
+            className="tg-tools-toggle"
+            onClick={() => setToolsOpen((v) => !v)}
+            aria-expanded={toolsOpen}
+          >
+            <Wrench size={13} />
+            Công cụ khác
+            <span style={{ color: '#94A3B8', fontWeight: 600 }}>
+              (kiểm tra trùng, văn bản A4, Word/Excel/PDF, .ics)
+            </span>
+            {toolsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
+
+        {toolsOpen && (
+          <div className="tg-tools-body">
+            <button type="button" className="tg-tool-chip" onClick={onDetectConflicts}>
+              <AlertTriangle size={13} color="#D97706" /> Phát hiện trùng lịch
+            </button>
+            <button type="button" className="tg-tool-chip" onClick={onExportDocument}>
+              <FileText size={13} color="#7C3AED" /> Văn bản lịch A4
+            </button>
+            <div style={{ position: 'relative' }}>
               <button
-                key={row.label}
-                onClick={() => pick(row.url)}
-                style={{
-                  width: '100%', border: 'none', background: '#FFFFFF', padding: '9px 12px',
-                  display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px',
-                  fontWeight: 600, color: '#1E293B', cursor: 'pointer', textAlign: 'left'
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = '#FFFFFF'; }}
+                type="button"
+                className="tg-tool-chip"
+                onClick={() => setExportOpen((v) => !v)}
+                aria-expanded={exportOpen}
               >
-                {row.icon} {row.label}
+                <FileDown size={13} color="#7C3AED" /> Tải Word / Excel / PDF
+                {exportOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               </button>
-            ))}
+              {exportOpen && (
+                <div className="tg-tools-menu">
+                  {[
+                    { label: 'Word (.docx) — sửa thể thức', icon: <FileText size={14} />, url: links.docx },
+                    { label: 'Excel (.xlsx) — lọc & tổng hợp', icon: <FileSpreadsheet size={14} />, url: links.xlsx },
+                    { label: 'PDF — in, ký, phát hành', icon: <FileType size={14} />, url: links.pdf },
+                  ].map((row) => (
+                    <button key={row.label} type="button" onClick={() => pick(row.url)}>
+                      {row.icon} {row.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button type="button" className="tg-tool-chip" onClick={onExportIcs}>
+              <CalendarDays size={13} color="#047857" /> Tải .ics (Google/Outlook)
+            </button>
+            <button type="button" className="tg-tool-chip" onClick={onScanMailClick}>
+              <ScanLine size={13} color="#0891B2" /> Dán thư mời / công văn
+            </button>
           </div>
         )}
       </div>
-      <Tile
-        tone="violet"
-        icon={<FileText />}
-        title="Văn bản lịch"
-        subtitle="Thể thức A4, in hoặc lưu PDF"
-        onClick={onExportDocument}
-      />
-      <Tile
-        tone="green"
-        icon={<CalendarDays />}
-        title="Tải .ics"
-        subtitle="Nhập vào Google/Outlook Calendar"
-        onClick={onExportIcs}
-      />
-      <Tile
-        tone="green"
-        icon={<Send />}
-        title="Ban hành tuần"
-        subtitle="Chuyển mục đã duyệt sang PUBLISHED"
-        onClick={onPublish}
-      />
-    </div>
+    </>
   );
 }
