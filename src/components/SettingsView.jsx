@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Settings as SettingsIcon, Shield, Key, Save, Database, FolderSync, Sparkles, Bell, Send, Clock, Download, Upload, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
 import SecurityView from './SecurityView';
+import AiConfigCard from './AiConfigCard';
 
 const inputStyle = {
   width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #CBD5E1',
@@ -332,26 +333,7 @@ export default function SettingsView({ settings, onSaved, showToast = (m) => {},
         </div>
       </Card>
 
-      <Card title="Trợ lý AI (Gemini)" icon={<Key size={18} color="#2563EB" />}>
-        <div style={{
-          fontSize: 12.5, color: health?.ai_available ? '#047857' : '#B45309',
-          background: health?.ai_available ? '#ECFDF5' : '#FFFBEB',
-          border: `1px solid ${health?.ai_available ? '#A7F3D0' : '#FDE68A'}`,
-          borderRadius: '8px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px'
-        }}>
-          <Sparkles size={15} />
-          {health?.ai_available
-            ? <>Đang hoạt động — mô hình <strong>{health.ai_model}</strong>.</>
-            : 'Chưa cấu hình khoá Gemini. Mọi tính năng AI sẽ báo lỗi rõ ràng thay vì tự bịa lịch.'}
-        </div>
-        <p style={{ fontSize: 12.5, color: '#64748B', margin: 0 }}>
-          Đặt một trong các biến trong tệp <code style={{ background: '#F1F5F9', padding: '2px 6px', borderRadius: 4 }}>.env</code> rồi khởi động lại server:
-          <code style={{ background: '#F1F5F9', padding: '2px 6px', borderRadius: 4, marginLeft: 4 }}>GEMINI_API_KEY=...</code>,
-          <code style={{ background: '#F1F5F9', padding: '2px 6px', borderRadius: 4, marginLeft: 4 }}>OPENAI_API_KEY=... + OPENAI_BASE_URL=...</code> (Groq/OpenRouter),
-          hoặc chạy Ollama cục bộ và đặt <code style={{ background: '#F1F5F9', padding: '2px 6px', borderRadius: 4 }}>LLM_PROVIDER=ollama</code>.
-          Không nhập khoá qua trình duyệt vì máy này chỉ phục vụ nội bộ và khoá sẽ bị lộ.
-        </p>
-      </Card>
+      <AiConfigCard health={health} onHealthChanged={setHealth} readOnly={readOnly} showToast={showToast} />
 
       <Card title="Nhắc việc tự động (Telegram / email / webhook)" icon={<Bell size={18} color="#2563EB" />}>
         {!notify ? (

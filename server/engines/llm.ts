@@ -28,7 +28,7 @@ function env(name: string): string {
 /** Danh sách nhà cung cấp theo thứ tự ưu tiên. `LLM_PROVIDER=auto` thử lần lượt. */
 export function candidateProviders(): LlmCandidate[] {
   const mode = (env('LLM_PROVIDER') || 'auto').toLowerCase();
-  const gemini: LlmCandidate = { provider: 'gemini', model: env('GEMINI_MODEL') || 'gemini-3.8-flash' };
+  const gemini: LlmCandidate = { provider: 'gemini', model: env('GEMINI_MODEL') || 'gemini-2.5-flash' };
   const ollama: LlmCandidate = {
     provider: 'ollama',
     model: env('OLLAMA_MODEL') || 'qwen2.5:7b',
@@ -46,6 +46,29 @@ export function candidateProviders(): LlmCandidate[] {
   // Ollama chạy cục bộ: thử sau cùng, lỗi kết nối sẽ tự loại khỏi vòng lặp.
   if (env('OLLAMA_DISABLED') !== '1') list.push(ollama);
   return list;
+}
+
+export function updateRuntimeAiConfig(config: {
+  gemini_api_key?: string;
+  gemini_model?: string;
+  ollama_model?: string;
+  ollama_base_url?: string;
+  openai_api_key?: string;
+  openai_base_url?: string;
+  openai_model?: string;
+  llm_provider?: string;
+}) {
+  if (config.gemini_api_key !== undefined) {
+    process.env.GEMINI_API_KEY = config.gemini_api_key.trim();
+    geminiClient = null;
+  }
+  if (config.gemini_model) process.env.GEMINI_MODEL = config.gemini_model.trim();
+  if (config.ollama_model) process.env.OLLAMA_MODEL = config.ollama_model.trim();
+  if (config.ollama_base_url) process.env.OLLAMA_BASE_URL = config.ollama_base_url.trim();
+  if (config.openai_api_key !== undefined) process.env.OPENAI_API_KEY = config.openai_api_key.trim();
+  if (config.openai_base_url) process.env.OPENAI_BASE_URL = config.openai_base_url.trim();
+  if (config.openai_model) process.env.OPENAI_MODEL = config.openai_model.trim();
+  if (config.llm_provider) process.env.LLM_PROVIDER = config.llm_provider.trim();
 }
 
 export function aiModel(): string {

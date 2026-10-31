@@ -13,7 +13,7 @@ import { parseIcsCalendar } from './engines/ics_import.ts';
 import { extractEventsFromText, coerceAiEvent } from './engines/extractor.ts';
 import { extractTextAsync, contentFingerprint } from './engines/document_text.ts';
 import { generateWeekDraft } from './services/week_draft.ts';
-import { aiModel, ask, askJson, AIUnavailableError, hasApiKey, probeProviders } from './engines/gemini.ts';
+import { aiModel, ask, askJson, AIUnavailableError, hasApiKey, probeProviders, updateRuntimeAiConfig } from './engines/gemini.ts';
 import { runAgent } from './engines/agent.ts';
 import { findFreeSlots, workloadByPerson } from './engines/free_slots.ts';
 import { planConflictResolutions } from './engines/optimizer.ts';
@@ -2949,6 +2949,66 @@ router.get('/ai/status', async (_req, res) => {
   res.json({
     providers,
     active: aiModel(),
+    any_available: providers.some((p) => p.available),
+  });
+});
+
+/** Lưu cấu hình nhà cung cấp AI vào .env và nạp ngay tại runtime. */
+router.post('/ai/config', async (req, res) => {
+  const { gemini_api_key, gemini_model, ollama_model, ollama_base_url, openai_api_key, openai_base_url, openai_model, llm_provider } = req.body || {};
+
+  updateRuntimeAiConfig({
+    gemini_api_key,
+    gemini_model,
+    ollama_model,
+    ollama_base_url,
+    openai_api_key,
+    openai_base_url,
+    openai_model,
+    llm_provider,
+  });
+
+  const envPath = path.join(path.resolve(import.meta.dirname, '..'), '.env');
+  let envContent = '';
+  if (fs.existsSync(envPath)) {
+    envContent = fs.readFileSync(envPath, 'utf8');
+  } else {
+    const examplePath = path.join(path.resolve(import.meta.dirname, '..'), '.env.example');
+    if (fs.existsSync(examplePath)) {
+      envContent = fs.readFileSync(examplePath, 'utf8');
+    }
+  }
+
+  const setEnvVal = (key: string, val: string | undefined) => {
+    if (val === undefined) return;
+    const regex = new RegExp(`^${key}=.*$`, 'm');
+    if (regex.test(envContent)) {
+      envContent = envContent.replace(regex, `${key}=${val}`);
+    } else {
+      envContent += `\n${key}=${val}`;
+    }
+  };
+
+  if (gemini_api_key !== undefined) setEnvVal('GEMINI_API_KEY', gemini_api_key.trim());
+  if (gemini_model) setEnvVal('GEMINI_MODEL', gemini_model.trim());
+  if (ollama_model) setEnvVal('OLLAMA_MODEL', ollama_model.trim());
+  if (ollama_base_url) setEnvVal('OLLAMA_BASE_URL', ollama_base_url.trim());
+  if (openai_api_key !== undefined) setEnvVal('OPENAI_API_KEY', openai_api_key.trim());
+  if (openai_base_url) setEnvVal('OPENAI_BASE_URL', openai_base_url.trim());
+  if (openai_model) setEnvVal('OPENAI_MODEL', openai_model.trim());
+  if (llm_provider) setEnvVal('LLM_PROVIDER', llm_provider.trim());
+
+  try {
+    fs.writeFileSync(envPath, envContent.trim() + '\n', 'utf8');
+  } catch (err: any) {
+    console.error('Không ghi được tệp .env:', err);
+  }
+
+  const providers = await probeProviders();
+  res.json({
+    ok: true,
+    active: aiModel(),
+    providers,
     any_available: providers.some((p) => p.available),
   });
 });

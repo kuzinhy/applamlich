@@ -276,6 +276,9 @@ export const api = {
   /** Trạng thái Gemini / Ollama / OpenAI-compatible đang dùng được. */
   getAIStatus: () => request('/ai/status'),
 
+  /** Lưu cấu hình API Key và nhà cung cấp AI. */
+  saveAiConfig: (payload) => request('/ai/config', { method: 'POST', body: payload }),
+
   /**
    * Trợ lý có công cụ: tự tra lịch, tìm khung trống, kiểm tra xung đột rồi trả lời.
    * allow_write = true cho phép tạo đề xuất (vẫn ở trạng thái chờ duyệt, không tự ban hành).

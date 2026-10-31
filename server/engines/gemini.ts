@@ -1,6 +1,6 @@
 import { ask, parseLooseJson, AIUnavailableError, type AskOptions } from './llm.ts';
 
-export { AIUnavailableError, ask, aiModel, hasApiKey, parseLooseJson, probeProviders } from './llm.ts';
+export { AIUnavailableError, ask, aiModel, hasApiKey, parseLooseJson, probeProviders, updateRuntimeAiConfig } from './llm.ts';
 export type { AskOptions, LlmProviderName } from './llm.ts';
 
 /** Nhận JSON từ mô hình, tự sửa một lần nếu lần đầu trả về chuỗi hỏng định dạng. */

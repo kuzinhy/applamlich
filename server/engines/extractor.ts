@@ -136,27 +136,189 @@ export interface ExtractResult {
   rejected: { title: string; reason: string }[];
 }
 
+/**
+ * Bộ bóc tách thông minh nội hàm (Heuristic Extractor) dùng khi AI Cloud/Ollama chưa cấu hình hoặc mất kết nối.
+ * Phân tích cấu trúc câu chữ, giấy mời, lịch tuần theo chuẩn văn bản hành chính Việt Nam.
+ */
+export function heuristicExtractEvents(
+  text: string,
+  ctx: { source_doc: string; source_id: string | null; source_priority: number; week_start: string }
+): ExtractResult {
+  const events: EventRecord[] = [];
+  const rejected: { title: string; reason: string }[] = [];
+  const defaultYear = Number(ctx.week_start.slice(0, 4)) || new Date().getFullYear();
+
+  // Kiểm tra giấy mời đơn lẻ
+  const isInvitation = /(?:giấy\s*mời|thư\s*mời|v\/v\s*mời|kính\s*mời|triệu\s*tập)/i.test(text);
+  const docDate = extractDate(text, defaultYear);
+
+  if (isInvitation) {
+    let title = '';
+    const vvMatch = text.match(/(?:v\/v|về\s*việc|nội\s*dung:?)\s+([^\n\r\.\;]+)/i);
+    if (vvMatch) {
+      title = vvMatch[1].trim();
+    } else {
+      const gmMention = text.match(/(?:giấy\s*mời|thư\s*mời)\s*[:\-–]?\s*([^\n\r]+)/i);
+      title = gmMention ? gmMention[1].trim() : 'Cuộc họp / Hội nghị theo giấy mời';
+    }
+
+    const timeMatch = text.match(/(?:thời\s*gian:?|vào\s*hồi:?)\s*([^\n\r\.\;]+)/i);
+    const timeContext = timeMatch ? timeMatch[1] : text;
+    const eventDate = extractDate(timeContext, defaultYear) || docDate || ctx.week_start;
+    const startTime = normalizeTime(timeContext) || '08:00';
+    const endMatch = timeContext.match(/(?:đến|tới|-|–)\s*(\d{1,2}(?:[.:h]\d{2}|[.:h]))/i);
+    const endTime = endMatch ? normalizeTime(endMatch[1]) : null;
+
+    let location = 'Chưa xác định (cần kiểm tra)';
+    const locMatch = text.match(/(?:địa\s*điểm:?|tại:?)\s*([^\n\r\.\;]+)/i);
+    if (locMatch) location = locMatch[1].trim();
+
+    let chair = '';
+    const chairMatch = text.match(/(?:chủ\s*trì:?|do\s+)(.+?)(?=\s+(?:thành phần|mời|địa điểm|thời gian|$|[\n\r;\.]))/i) ||
+      text.match(/(?:đ\/c|đồng chí|ông|bà)\s+([^\n\r,;\.]+?)\s+chủ\s*trì/i);
+    if (chairMatch) chair = chairMatch[1].replace(/chủ\s*trì/gi, '').trim();
+
+    let participants = '';
+    const partMatch = text.match(/(?:thành\s*phần:?|mời:?|thành\s*phần\s*mời:?)\s*([^\n\r\.\;]+)/i);
+    if (partMatch) participants = partMatch[1].trim();
+
+    const preparation = extractPreparation(text) || '';
+
+    const coerced = coerceAiEvent({
+      title,
+      content: text.slice(0, 500),
+      event_date: eventDate,
+      start_time: startTime,
+      end_time: endTime,
+      chair,
+      location,
+      participants,
+      preparation,
+      confidence: 0.85,
+    }, ctx);
+
+    if (coerced) {
+      events.push(coerced);
+      return { events, rejected };
+    }
+  }
+
+  // Phân tích văn bản có nhiều dòng/sự kiện
+  const lines = text.split(/[\r\n]+/);
+  let currentDate = docDate || ctx.week_start;
+  let buffer: string[] = [];
+  let currentEventRaw: { date: string; time: string; text: string } | null = null;
+  const rawEvents: Array<{ date: string; time: string; text: string }> = [];
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+
+    const lineDate = extractDate(trimmedLine, defaultYear);
+    if (lineDate && /(?:thứ\s+|ngày\s+\d)/i.test(trimmedLine)) {
+      currentDate = lineDate;
+    }
+
+    const timeInLine = normalizeTime(trimmedLine);
+    if (timeInLine && /(?:^\s*[-•*]?\s*\d{1,2}[h:]|\b\d{1,2}h\d{2}\b|\b\d{1,2}:\d{2}\b)/.test(trimmedLine)) {
+      if (currentEventRaw) {
+        currentEventRaw.text = buffer.join(' ');
+        rawEvents.push(currentEventRaw);
+        buffer = [];
+      }
+      currentEventRaw = {
+        date: currentDate,
+        time: timeInLine,
+        text: trimmedLine,
+      };
+      buffer.push(trimmedLine);
+    } else if (currentEventRaw) {
+      buffer.push(trimmedLine);
+    }
+  }
+
+  if (currentEventRaw) {
+    currentEventRaw.text = buffer.join(' ');
+    rawEvents.push(currentEventRaw);
+  }
+
+  if (rawEvents.length > 0) {
+    for (const raw of rawEvents) {
+      const locMatch = raw.text.match(/(?:tại|ở|địa điểm:?)\s+([^,;\.\n]+)/i);
+      const chairMatch = raw.text.match(/(?:chủ\s*trì:?|do\s+)(.+?)(?=\s+(?:thành phần|mời|địa điểm|$|[,;\.]))/i) ||
+        raw.text.match(/(?:đ\/c|đồng chí)\s+([^,;\.\n]+?)\s+chủ\s*trì/i);
+      const partMatch = raw.text.match(/(?:thành\s*phần:?|mời:?)\s+([^,;\.\n]+)/i);
+
+      const title = raw.text
+        .replace(new RegExp(`^.*?${raw.time}\\s*[:\\-]?\\s*`, 'i'), '')
+        .slice(0, 120)
+        .trim();
+
+      const coerced = coerceAiEvent({
+        title: title || 'Cuộc họp công tác',
+        content: raw.text,
+        event_date: raw.date,
+        start_time: raw.time,
+        location: locMatch ? locMatch[1].trim() : 'Chưa xác định',
+        chair: chairMatch ? chairMatch[1].replace(/chủ\s*trì/gi, '').trim() : '',
+        participants: partMatch ? partMatch[1].trim() : '',
+        confidence: 0.8,
+      }, ctx);
+
+      if (coerced) events.push(coerced);
+    }
+  }
+
+  // Fallback an toàn nếu chưa tìm thấy mục cụ thể: đưa toàn bộ vào 1 sự kiện chờ duyệt
+  if (events.length === 0) {
+    const firstLine = lines.find((l) => l.trim().length > 10) || ctx.source_doc;
+    const coerced = coerceAiEvent({
+      title: firstLine.slice(0, 100),
+      content: text.slice(0, 1000),
+      event_date: docDate || ctx.week_start,
+      start_time: normalizeTime(text) || '08:00',
+      location: 'Chưa xác định',
+      confidence: 0.7,
+    }, ctx);
+    if (coerced) events.push(coerced);
+  }
+
+  return { events, rejected };
+}
+
 /** Bóc tách một văn bản nguồn thành danh sách sự kiện PROPOSED. */
 export async function extractEventsFromText(
   text: string,
   ctx: { source_doc: string; source_id: string | null; source_priority: number; week_start: string }
 ): Promise<ExtractResult> {
   const trimmed = (text || '').trim();
-  if (trimmed.length < 40) {
+  if (trimmed.length < 20) {
     throw new AIUnavailableError(`Nội dung văn bản "${ctx.source_doc}" quá ngắn để bóc tách.`);
   }
-  const data = await askJson<{ events?: Record<string, any>[] }>({
-    systemInstruction: EXTRACT_SYSTEM,
-    prompt: `Tuần tham chiếu bắt đầu ${ctx.week_start}. Văn bản: ${ctx.source_doc}\n\n${trimmed.slice(0, 12000)}`,
-    label: 'extract',
-  });
-  const raw = Array.isArray(data.events) ? data.events : [];
-  const events: EventRecord[] = [];
-  const rejected: { title: string; reason: string }[] = [];
-  for (const item of raw) {
-    const coerced = coerceAiEvent(item, ctx);
-    if (coerced) events.push(coerced);
-    else rejected.push({ title: String(item?.title || '(không tiêu đề)'), reason: 'Thiếu cả tiêu đề và nội dung' });
+
+  // 1. Thử gọi AI (Gemini / Ollama / OpenAI) nếu có cấu hình
+  try {
+    const data = await askJson<{ events?: Record<string, any>[] }>({
+      systemInstruction: EXTRACT_SYSTEM,
+      prompt: `Tuần tham chiếu bắt đầu ${ctx.week_start}. Văn bản: ${ctx.source_doc}\n\n${trimmed.slice(0, 12000)}`,
+      label: 'extract',
+    });
+    const raw = Array.isArray(data.events) ? data.events : [];
+    if (raw.length > 0) {
+      const events: EventRecord[] = [];
+      const rejected: { title: string; reason: string }[] = [];
+      for (const item of raw) {
+        const coerced = coerceAiEvent(item, ctx);
+        if (coerced) events.push(coerced);
+        else rejected.push({ title: String(item?.title || '(không tiêu đề)'), reason: 'Thiếu cả tiêu đề và nội dung' });
+      }
+      return { events, rejected };
+    }
+  } catch (err: any) {
+    // Khi AI chưa có key hoặc lỗi, tự động chuyển sang bộ bóc tách thông minh Heuristic
+    console.warn(`[Extractor] AI chưa sẵn sàng (${err?.message}), chuyển sang bộ bóc tách thông minh nội hàm.`);
   }
-  return { events, rejected };
+
+  // 2. Fallback sang bộ bóc tách thông minh Heuristic
+  return heuristicExtractEvents(trimmed, ctx);
 }
