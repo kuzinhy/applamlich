@@ -39,7 +39,9 @@ export default function SourceIngestion({
 
   const list = sources || [];
   const visible = expanded ? list : list.slice(0, 8);
-  const pendingCount = list.filter((s) => !(s.raw_text && s.raw_text.length > 40)).length;
+  /** API chỉ trả `chars` (không trả raw_text) — dùng chars để biết văn bản đã có nội dung đọc được. */
+  const textLength = (s) => Number(s.chars ?? (s.raw_text ? s.raw_text.length : 0)) || 0;
+  const pendingCount = list.filter((s) => textLength(s) <= 40).length;
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -173,7 +175,7 @@ export default function SourceIngestion({
           )}
           {visible.map((s) => {
             const meta = STATUS_META[s.parse_status] || STATUS_META.PENDING;
-            const hasText = !!(s.raw_text && s.raw_text.length > 40);
+            const hasText = textLength(s) > 40;
             return (
               <div
                 key={s.id}
@@ -188,7 +190,7 @@ export default function SourceIngestion({
                     {s.file_name}
                   </div>
                   <div style={{ fontSize: '11px', color: '#64748B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {(s.notes || s.source_type)} · {hasText ? `${s.raw_text.length.toLocaleString('vi-VN')} ký tự` : 'chưa có nội dung'}
+                    {(s.notes || s.source_type)} · {hasText ? `${textLength(s).toLocaleString('vi-VN')} ký tự` : 'chưa có nội dung'}
                   </div>
                 </div>
                 <div style={{ fontSize: '11px', color: '#94A3B8', flexShrink: 0 }}>

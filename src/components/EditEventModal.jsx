@@ -55,7 +55,7 @@ const QUICK_TEMPLATES = [
   }
 ];
 
-export default function EditEventModal({ isOpen, event, onClose, onSave, onDelete, onDataChanged }) {
+export default function EditEventModal({ isOpen, event, focusField, onClose, onSave, onDelete, onDataChanged }) {
   const isCreateMode = !event?.id;
 
   const blank = {
@@ -68,12 +68,15 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
     participants: '',
     participant_group: '',
     preparation: '',
+    documents_required: '',
+    contact_person: '',
     content: '',
     priority_score: 80,
     status: 'DRAFT'
   };
 
   const [formData, setFormData] = useState(blank);
+  const dialogRef = React.useRef(null);
 
   const [quickPrompt, setQuickPrompt] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -102,6 +105,19 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
       setRepeatNote('');
     }
   }, [event]);
+
+  /** Mở từ trang giấy văn bản: cuộn và đặt con trỏ vào đúng trường vừa bấm. */
+  useEffect(() => {
+    if (!isOpen || !focusField) return undefined;
+    const timer = setTimeout(() => {
+      const node = dialogRef.current?.querySelector(`[data-field="${focusField}"]`);
+      if (!node) return;
+      node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      node.focus({ preventScroll: true });
+      if (typeof node.select === 'function' && node.tagName === 'INPUT' && node.type === 'text') node.select();
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [isOpen, event, focusField]);
 
   const submitTask = async () => {
     if (!taskDraft.text.trim()) return;
@@ -260,7 +276,9 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
       background: 'rgba(15, 42, 95, 0.45)', backdropFilter: 'blur(4px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
     }}>
-      <div style={{
+      <div
+        ref={dialogRef}
+        style={{
         background: '#FFFFFF', borderRadius: '16px', width: '680px', maxWidth: '94%',
         maxHeight: '92vh', overflowY: 'auto', padding: '24px',
         boxShadow: '0 20px 40px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', gap: '16px'
@@ -363,6 +381,7 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
             <input
               type="text"
               required
+              data-field="title"
               placeholder="Nhập tên cuộc họp, hội nghị hoặc công tác..."
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -378,6 +397,7 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
               <input
                 type="date"
                 required
+                data-field="event_date"
                 value={formData.event_date}
                 onChange={(e) => setFormData({ ...formData, event_date: e.target.value })}
                 style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '13px' }}
@@ -390,6 +410,7 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
               <input
                 type="time"
                 required
+                data-field="start_time"
                 value={formData.start_time}
                 onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
                 style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '13px' }}
@@ -401,6 +422,7 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
               </label>
               <input
                 type="time"
+                data-field="end_time"
                 value={formData.end_time}
                 onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
                 style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '13px' }}
@@ -411,6 +433,7 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
                 Mức độ ưu tiên:
               </label>
               <select
+                data-field="priority_score"
                 value={formData.priority_score}
                 onChange={(e) => setFormData({ ...formData, priority_score: Number(e.target.value) })}
                 style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '12.5px', background: '#FFFFFF' }}
@@ -476,6 +499,7 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
               <input
                 type="text"
                 list="leaders-list"
+                data-field="chair"
                 placeholder="Chọn hoặc nhập tên lãnh đạo chủ trì..."
                 value={formData.chair}
                 onChange={(e) => setFormData({ ...formData, chair: e.target.value })}
@@ -500,6 +524,7 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
               <input
                 type="text"
                 list="locations-list"
+                data-field="location"
                 placeholder="Chọn hoặc nhập địa điểm..."
                 value={formData.location}
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
@@ -524,6 +549,7 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
               </label>
               <input
                 type="text"
+                data-field="participants"
                 placeholder="VD: Thường trực Đảng ủy, Lãnh đạo UBND, Trưởng các đoàn thể..."
                 value={formData.participants}
                 onChange={(e) => setFormData({ ...formData, participants: e.target.value })}
@@ -535,6 +561,7 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
                 Khối / Đơn vị:
               </label>
               <select
+                data-field="participant_group"
                 value={formData.participant_group}
                 onChange={(e) => setFormData({ ...formData, participant_group: e.target.value })}
                 style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '13px', background: '#FFFFFF' }}
@@ -548,15 +575,45 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
             </div>
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                <FileCheck size={13} /> Yêu cầu chuẩn bị (báo cáo, phân công):
+              </label>
+              <input
+                type="text"
+                data-field="preparation"
+                placeholder="VD: Văn phòng chuẩn bị tài liệu trước 16h..."
+                value={formData.preparation}
+                onChange={(e) => setFormData({ ...formData, preparation: e.target.value })}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '13px' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                <FileCheck size={13} /> Tài liệu cần mang theo:
+              </label>
+              <input
+                type="text"
+                data-field="documents_required"
+                placeholder="VD: Dự thảo nghị quyết, báo cáo tiến độ..."
+                value={formData.documents_required}
+                onChange={(e) => setFormData({ ...formData, documents_required: e.target.value })}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '13px' }}
+              />
+            </div>
+          </div>
+
           <div>
             <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-              <FileCheck size={13} /> Yêu cầu chuẩn bị (báo cáo, tài liệu, phân công):
+              <User size={13} /> Người liên hệ phối hợp:
             </label>
             <input
               type="text"
-              placeholder="VD: Văn phòng chuẩn bị tài liệu trước 16h; Ban Xây dựng Đảng báo cáo..."
-              value={formData.preparation}
-              onChange={(e) => setFormData({ ...formData, preparation: e.target.value })}
+              data-field="contact_person"
+              placeholder="VD: Đ/c Nguyễn Văn A — Chánh Văn phòng, số nội bộ 123"
+              value={formData.contact_person}
+              onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
               style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '13px' }}
             />
           </div>
@@ -673,6 +730,7 @@ export default function EditEventModal({ isOpen, event, onClose, onSave, onDelet
             </label>
             <textarea
               rows={2}
+              data-field="content"
               placeholder="Ghi chú nội dung chi tiết phục vụ xuất bản Lịch công tác..."
               value={formData.content}
               onChange={(e) => setFormData({ ...formData, content: e.target.value })}

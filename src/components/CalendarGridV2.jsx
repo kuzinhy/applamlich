@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, MapPin, Plus, AlertTriangle, Sparkles } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight, MapPin, Plus, AlertTriangle, Sparkles, Loader2 } from 'lucide-react';
+import { api } from '../services/api';
 
 const MORNING_SLOTS = [
   { start: '07:00', end: '08:30', label: '07:00 – Đầu giờ sáng' },
@@ -68,6 +69,7 @@ export default function CalendarGridV2({
   onPrevWeek,
   onNextWeek,
   onTodayClick,
+  onMonthChange,
 }) {
   const [viewMode, setViewMode] = useState('week');
   const [selectedFilter, setSelectedFilter] = useState('all');
@@ -75,6 +77,26 @@ export default function CalendarGridV2({
   const [selectedDayDate, setSelectedDayDate] = useState('');
   const [hoveredSlot, setHoveredSlot] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
+  const [monthKey, setMonthKey] = useState(() => (weekStart || '').slice(0, 7));
+  const [monthData, setMonthData] = useState(null);
+  const [monthLoading, setMonthLoading] = useState(false);
+
+  useEffect(() => {
+    if (viewMode !== 'month') return undefined;
+    let alive = true;
+    setMonthLoading(true);
+    api.getMonthCalendar(monthKey)
+      .then((data) => { if (alive) setMonthData(data); })
+      .catch(() => { if (alive) setMonthData(null); })
+      .finally(() => { if (alive) setMonthLoading(false); });
+    return () => { alive = false; };
+  }, [viewMode, monthKey]);
+
+  const shiftMonth = (delta) => {
+    const [y, m] = monthKey.split('-').map(Number);
+    const d = new Date(y, (m - 1) + delta, 1);
+    setMonthKey(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
 
   // Ngày hiển thị luôn lấy từ dữ liệu tuần đã nạp — không có tuần mẫu hardcode.
   const days = daysProp.map((d) => ({
@@ -247,23 +269,25 @@ export default function CalendarGridV2({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button
-            onClick={onTodayClick}
+            onClick={viewMode === 'month' ? () => setMonthKey(new Date().toISOString().slice(0, 7)) : onTodayClick}
             style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '6px 14px', fontSize: '13px', fontWeight: '600', color: '#1E293B', cursor: 'pointer' }}
           >
             Hôm nay
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <button onClick={onPrevWeek} title="Tuần trước" style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', color: '#64748B' }}>
+            <button onClick={viewMode === 'month' ? () => shiftMonth(-1) : onPrevWeek} title="Trước" style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', color: '#64748B' }}>
               <ChevronLeft size={18} />
             </button>
-            <button onClick={onNextWeek} title="Tuần sau" style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', color: '#64748B' }}>
+            <button onClick={viewMode === 'month' ? () => shiftMonth(1) : onNextWeek} title="Sau" style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', color: '#64748B' }}>
               <ChevronRight size={18} />
             </button>
           </div>
 
           <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0F2A5F', margin: 0 }}>
-            Tuần {weekNumber ?? '—'} · tháng {monthLabel}
+            {viewMode === 'month'
+              ? `Tháng ${monthKey.slice(5, 7)}/${monthKey.slice(0, 4)}`
+              : `Tuần ${weekNumber ?? '—'} · tháng ${monthLabel}`}
           </h2>
 
           <span style={{ fontSize: '11.5px', color: '#2563EB', background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '4px 10px', borderRadius: '20px', fontWeight: '600' }}>
@@ -380,37 +404,64 @@ export default function CalendarGridV2({
           </div>
         </div>
       ) : viewMode === 'month' ? (
-        <div style={{ border: '1px solid #E5EAF2', borderRadius: '12px', padding: '12px' }}>
-          <div style={{ fontSize: '12px', color: '#64748B', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Sparkles size={13} color="#7E22CE" />
-            Tháng chỉ hiển thị chi tiết tuần đang xem ({days[0].date} – {days[6].date}); ngày khác bấm để chuyển tới tuần đó.
+        <div style={{ border: '1px solid #E5EAF2', borderRadius: '12px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button onClick={() => shiftMonth(-1)} title="Tháng trước" style={{ border: '1px solid #CBD5E1', background: '#FFFFFF', borderRadius: '7px', padding: '3px 6px', cursor: 'pointer', color: '#475569' }}>
+                <ChevronLeft size={16} />
+              </button>
+              <strong style={{ fontSize: '14px', color: '#0F2A5F' }}>
+                Tháng {monthKey.slice(5, 7)}/{monthKey.slice(0, 4)}
+              </strong>
+              <button onClick={() => shiftMonth(1)} title="Tháng sau" style={{ border: '1px solid #CBD5E1', background: '#FFFFFF', borderRadius: '7px', padding: '3px 6px', cursor: 'pointer', color: '#475569' }}>
+                <ChevronRight size={16} />
+              </button>
+              <button onClick={() => setMonthKey(new Date().toISOString().slice(0, 7))} style={{ border: '1px solid #CBD5E1', background: '#FFFFFF', borderRadius: '7px', padding: '3px 9px', fontSize: '11.5px', fontWeight: 700, color: '#475569', cursor: 'pointer' }}>
+                Tháng này
+              </button>
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#64748B', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {monthLoading ? <Loader2 size={13} /> : <Sparkles size={13} color="#7E22CE" />}
+              {monthData ? `${monthData.stats?.total ?? 0} mục trong lưới tháng · bấm một ngày để mở tuần đó` : 'Đang tải lịch tháng…'}
+            </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
-            {days.map((d) => (
-              <div key={d.fullDate} style={{ fontSize: '12px', fontWeight: '800', color: '#0F2A5F', textAlign: 'center', padding: '6px', background: '#F8FAFC', borderRadius: '6px' }}>
-                {d.name}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '6px' }}>
+            {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'].map((label) => (
+              <div key={label} style={{ fontSize: '11.5px', fontWeight: 800, color: '#0F2A5F', textAlign: 'center', padding: '6px', background: '#F8FAFC', borderRadius: '6px' }}>
+                {label}
               </div>
             ))}
-            {days.map((d) => {
+            {(monthData?.days || []).map((d) => {
               const cellEvents = (d.events || []).filter(filterEvent);
+              const isToday = Boolean(d.is_today);
               return (
                 <div
-                  key={d.fullDate}
-                  onClick={() => handleSlotClick(d.fullDate, '08:00', '09:30')}
+                  key={d.date}
+                  onClick={() => {
+                    if (onMonthChange) onMonthChange(d.date);
+                    setSelectedDayDate(d.date);
+                    setViewMode('week');
+                  }}
+                  title={`Mở tuần chứa ngày ${d.display_date}`}
                   style={{
-                    border: d.isToday ? '2px solid #2563EB' : '1px solid #E2E8F0',
-                    borderRadius: '8px', padding: '8px', minHeight: '96px',
-                    background: d.isToday ? '#EFF6FF' : '#FFFFFF',
-                    display: 'flex', flexDirection: 'column', gap: '4px', cursor: 'pointer',
+                    border: isToday ? '2px solid #2563EB' : '1px solid #E2E8F0',
+                    borderRadius: '8px', padding: '6px', minHeight: '92px',
+                    background: isToday ? '#EFF6FF' : d.holiday ? '#FFFBEB' : d.in_month ? '#FFFFFF' : '#F8FAFC',
+                    display: 'flex', flexDirection: 'column', gap: '3px', cursor: 'pointer',
+                    opacity: d.in_month ? 1 : 0.62,
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '800', color: d.isToday ? '#2563EB' : '#1E293B' }}>{d.date}</span>
-                    <span style={{ fontSize: '10px', color: '#2563EB', fontWeight: '700' }}>+ Thêm</span>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: isToday ? '#2563EB' : d.is_weekend ? '#B45309' : '#1E293B' }}>{d.display_date}</span>
+                    {cellEvents.length > 0 && <span style={{ fontSize: '9.5px', fontWeight: 800, color: '#2563EB', background: '#DBEAFE', borderRadius: '8px', padding: '0 5px' }}>{cellEvents.length}</span>}
                   </div>
+                  {d.holiday && (
+                    <div style={{ fontSize: '9px', fontWeight: 700, color: '#B45309', lineHeight: 1.2 }}>NGHỈ: {String(d.holiday).split('(')[0].trim().slice(0, 20)}</div>
+                  )}
                   {cellEvents.slice(0, 3).map((ev) => renderCard(ev, true))}
                   {cellEvents.length > 3 && (
-                    <div style={{ fontSize: '9.5px', color: '#64748B', fontWeight: '600' }}>+{cellEvents.length - 3} lịch khác</div>
+                    <div style={{ fontSize: '9.5px', color: '#64748B', fontWeight: 600 }}>+{cellEvents.length - 3} lịch khác</div>
                   )}
                 </div>
               );
