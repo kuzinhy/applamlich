@@ -30,7 +30,11 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: { host: HOST } },
+      server: {
+        middlewareMode: true,
+        // Chạy nhiều bản thử nghiệm trên cùng máy: đặt HMR_PORT riêng cho từng cổng.
+        hmr: { host: HOST, port: Number(process.env.HMR_PORT) || 24678 },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

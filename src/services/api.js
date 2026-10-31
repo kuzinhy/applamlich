@@ -181,10 +181,10 @@ export const api = {
   // ---------------- Sự kiện ----------------
   getEvents: async (week) => (await request('/state', { query: { week } })).events,
 
-  getProposedEvents: async () => {
-    const s = await request('/state', {});
-    return s.events.filter((e) => e.status === 'PROPOSED');
-  },
+  /** Toàn bộ đề xuất (mọi tuần) — màn duyệt không phụ thuộc tuần đang xem. */
+  getProposedEvents: async (params = {}) => (await request('/proposals', { query: params })).proposals,
+
+  getProposals: (params = {}) => request('/proposals', { query: params }),
 
   createEvent: (data) => request('/events', { method: 'POST', body: data }),
 
@@ -236,25 +236,30 @@ export const api = {
       body: { file_name: file.name, content_base64: await fileToBase64(file), ...range },
     }),
 
-  // ---------------- Lịch tuần ----------------
+  // ---------------- Lịch tuần / tháng ----------------
+  /** Dựng lịch tuần từ payload /state đã tải — tránh gọi lại /state lần hai. */
+  weekCalendarFromState: (s) => ({
+    start_date: s.week.start,
+    end_date: s.week.end,
+    week_number: s.week.week_number,
+    days: s.week.days.map((d) => ({
+      ...d,
+      isToday: d.is_today,
+      events: s.events
+        .filter((e) => e.event_date === d.date)
+        .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || '')),
+    })),
+    stats: s.stats,
+    conflicts: s.conflicts,
+    settings: s.settings,
+  }),
+
   getWeekCalendar: async (startDate = '') => {
     const s = await request('/state', { query: { week: startDate || currentWeekStart() } });
-    return {
-      start_date: s.week.start,
-      end_date: s.week.end,
-      week_number: s.week.week_number,
-      days: s.week.days.map((d) => ({
-        ...d,
-        isToday: d.is_today,
-        events: s.events
-          .filter((e) => e.event_date === d.date)
-          .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || '')),
-      })),
-      stats: s.stats,
-      conflicts: s.conflicts,
-      settings: s.settings,
-    };
+    return api.weekCalendarFromState(s);
   },
+
+  getMonthCalendar: (month) => request('/calendar/month', { query: { month } }),
 
   // ---------------- Xung đột ----------------
   getConflicts: async () => (await request('/conflicts')).conflicts,
@@ -409,9 +414,25 @@ export const api = {
   revokePublication: (id) => request(`/publications/${id}/revoke`, { method: 'POST' }),
 
   /** Bật link tra cứu công khai cho một tuần đã ban hành (không cần tài khoản để xem). */
-  enableWeekShare: (publicationId) => request(`/publications/${publicationId}/share`, { method: 'POST', body: {} }),
+  enableWeekShare: (publicationId, payload = {}) =>
+    request(`/publications/${publicationId}/share`, { method: 'POST', body: payload }),
 
   disableWeekShare: (publicationId) => request(`/publications/${publicationId}/share`, { method: 'DELETE' }),
+
+  /** Mã QR + liên kết in của một lượt ban hành đã bật chia sẻ. */
+  getPublicationQr: (publicationId) => request(`/publications/${publicationId}/qr`),
+
+  // ---------------- Đăng ký lịch .ics tự cập nhật ----------------
+  getIcsSubscription: () => request('/ics/subscription'),
+
+  rotateIcsSubscription: () => request('/ics/subscription/rotate', { method: 'POST', body: {} }),
+
+  // ---------------- Ý kiến duyệt & lịch sử phiên bản ----------------
+  getEventComments: (id) => request(`/events/${id}/comments`),
+
+  addEventComment: (id, text) => request(`/events/${id}/comments`, { method: 'POST', body: { text } }),
+
+  getEventVersions: (id) => request(`/events/${id}/versions`),
 
   /** Soi thể thức văn bản theo Nghị định 30/2020 + ngày lễ trùng tuần. */
   getFormatCheck: (week) => request('/util/format-check', { query: { week } }),

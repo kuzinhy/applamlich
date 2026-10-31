@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { getState, mutate, newId, persist, recordAudit, storeFileLocation, extractLeaders, DATA_DIR, eventsBetween, rememberLesson, rememberPublication, rememberWebhookDelivery, pruneSessions, findUserByName, normalizeTask, normalizeTasks, newShareToken, noteShareAccess, replaceState, SCHEMA_VERSION } from './store.ts';
+import { getState, mutate, newId, persist, recordAudit, storeFileLocation, extractLeaders, DATA_DIR, eventsBetween, rememberLesson, rememberPublication, rememberWebhookDelivery, pruneSessions, findUserByName, normalizeTask, normalizeTasks, newShareToken, noteShareAccess, replaceState, SCHEMA_VERSION, addEventComment, addEventVersion, ensureIcsToken, rotateIcsToken } from './store.ts';
 import { upsertEvents } from './services/merge.ts';
 import { PARTY_SIGNAL_GROUPS, canonicalPersonName } from './engines/party_signals.ts';
 import { learnAssignments, mergeLearnedRules, rosterFromPersonnel, runPartyDetection } from './services/party_detection.ts';
@@ -28,7 +28,17 @@ import { checkDocumentFormat } from './engines/format_check.ts';
 import { holidaysInYear, holidaysInRange, LUNAR_NOTICE } from './utils/vn_holidays.ts';
 import { agencyHeadLines, advisorUnitName } from './utils/organization.ts';
 import type { DriveSetupRecord, EventRecord, EventStatus, EventTask, NotificationConfig, PublicationRecord, SessionRecord, UserRecord, UserRole, WebhookEvent } from './types.ts';
-import { WEBHOOK_LOG_LIMIT, EVENT_TASK_LIMIT, TRASH_LIMIT, DEFAULT_DRIVE_SETUP } from './types.ts';
+import QRCode from 'qrcode';
+import { WEBHOOK_LOG_LIMIT, EVENT_TASK_LIMIT, TRASH_LIMIT, DEFAULT_DRIVE_SETUP, DEFAULT_USER_NOTIFY_PREFS } from './types.ts';
+
+/** Phiên bản ứng dụng đọc một lần từ package.json, dùng cho màn Hỗ trợ. */
+const APP_VERSION = (() => {
+  try {
+    return String(JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '..', 'package.json'), 'utf8')).version || '1.0.0');
+  } catch {
+    return '1.0.0';
+  }
+})();
 import {
   ALL_PERMISSIONS,
   MAX_PASSWORD_LENGTH,
@@ -219,7 +229,7 @@ function requireAuthOf(req: Request): AuthContext | null {
 }
 
 /** Không cần phiên: màn hình đăng nhập, thăm dò tình trạng và trang lịch đã chia sẻ công khai. */
-const PUBLIC_ROUTES = [/^\/health$/, /^\/auth\/(status|login|setup|google)$/, /^\/public\/week\//];
+const PUBLIC_ROUTES = [/^\/health$/, /^\/auth\/(status|login|setup|google)$/, /^\/public\/week\//, /^\/ics\/feed\//];
 /** Bất kỳ người nào đã đăng nhập cũng dùng được, không xét vai trò. */
 const SELF_SERVICE_ROUTES = [/^\/auth\/(me|logout|password|sessions)(\/|$)/];
 
@@ -243,6 +253,7 @@ const PERMISSION_RULES: Array<{ method: string; re: RegExp; perm: RuleTarget }> 
   { method: 'POST', re: /^\/agency/, perm: 'agency:write' },
   { method: 'PATCH', re: /^\/agency/, perm: 'agency:write' },
   { method: 'DELETE', re: /^\/agency/, perm: 'agency:write' },
+  { method: 'POST', re: /^\/events\/[^/]+\/comments$/, perm: 'read' },
   { method: 'POST', re: /^\/events\/[^/]+\/status$/, perm: 'proposals:review' },
   { method: 'POST', re: /^\/events/, perm: 'events:write' },
   { method: 'PATCH', re: /^\/events/, perm: 'events:write' },
@@ -260,6 +271,7 @@ const PERMISSION_RULES: Array<{ method: string; re: RegExp; perm: RuleTarget }> 
   { method: 'POST', re: /^\/publications\/[^/]+\/revoke$/, perm: 'publish' },
   { method: 'POST', re: /^\/publications\/[^/]+\/share$/, perm: 'publish' },
   { method: 'DELETE', re: /^\/publications\/[^/]+\/share$/, perm: 'publish' },
+  { method: 'POST', re: /^\/ics\/subscription\/rotate$/, perm: 'publish' },
   { method: 'POST', re: /^\/trash/, perm: 'events:write' },
   { method: 'DELETE', re: /^\/trash/, perm: 'events:write' },
   { method: 'POST', re: /^\/import\//, perm: 'sources:write' },
@@ -427,6 +439,8 @@ router.get('/health', async (_req, res) => {
   const providers = await probeProviders();
   const base: Record<string, unknown> = {
     status: 'ok',
+    version: APP_VERSION,
+    uptime_seconds: Math.round(process.uptime()),
     ai_available: providers.some((p) => p.available),
     ai_providers: providers,
     schema_version: s.schema_version,
@@ -439,6 +453,9 @@ router.get('/health', async (_req, res) => {
     ...base,
     ai_model: aiModel(),
     store: storeFileLocation(),
+    events: s.events.length,
+    sources: s.sources.length,
+    users: s.users.length,
     counts: {
       sources: s.sources.length,
       events: s.events.length,
@@ -475,8 +492,14 @@ function newPasswordProblems(password: string, username: string): string[] {
 }
 
 /** Các trường danh tính thêm cho tài khoản mới; bản tạo bằng Google sẽ ghi đè sau. */
-function newIdentityFields(): Pick<UserRecord, 'auth_provider' | 'email' | 'google_sub' | 'drive_setup'> {
-  return { auth_provider: 'local', email: '', google_sub: '', drive_setup: { ...DEFAULT_DRIVE_SETUP } };
+function newIdentityFields(): Pick<UserRecord, 'auth_provider' | 'email' | 'google_sub' | 'drive_setup' | 'notify_prefs'> {
+  return {
+    auth_provider: 'local',
+    email: '',
+    google_sub: '',
+    drive_setup: { ...DEFAULT_DRIVE_SETUP },
+    notify_prefs: { ...DEFAULT_USER_NOTIFY_PREFS },
+  };
 }
 
 router.get('/auth/status', (req, res) => {
@@ -608,6 +631,7 @@ router.post('/auth/google', async (req, res) => {
       email: verified.identity.email,
       google_sub: verified.identity.sub,
       drive_setup: { ...DEFAULT_DRIVE_SETUP },
+      notify_prefs: { ...DEFAULT_USER_NOTIFY_PREFS },
     };
     created = true;
     mutate((s) => s.users.push(user!));
@@ -1144,17 +1168,27 @@ router.get('/config/firebase', (_req, res) => {
 
 
 
+/** Bản tóm tắt nguồn: không gửi raw_text (có thể vài trăm KB) qua mỗi lần tải lịch. */
+function sourceSummary(source: any) {
+  const { raw_text, ...rest } = source;
+  return { ...rest, chars: (raw_text || '').length };
+}
+
 router.get('/state', (req, res) => {
   const { start, end } = weekParam(req);
   const s = getState();
   const days = weekDays(start);
   const events = eventsBetween(start, end);
   const ids = new Set(events.map((e) => e.id));
+  const proposedAll = s.events.filter((e) => e.status === 'PROPOSED');
   res.json({
     week: { start, end, week_number: isoWeekNumber(start), days },
     events,
-    sources: s.sources,
+    sources: s.sources.map(sourceSummary),
     conflicts: s.conflicts.filter((c) => ids.has(c.event_id_1) || ids.has(c.event_id_2)),
+    /** Đề xuất của mọi tuần để màn duyệt không bị giới hạn ở tuần đang xem. */
+    proposed_events: proposedAll,
+    open_conflicts: s.conflicts.filter((c) => c.status === 'OPEN').length,
     agency_schedules: s.agency_schedules.filter((a) => a.event_date >= start && a.event_date <= end),
     personnel: s.personnel,
     settings: s.settings,
@@ -1164,9 +1198,79 @@ router.get('/state', (req, res) => {
       total: events.length,
       high_priority: events.filter((e) => e.priority_score >= 80).length,
       proposed: events.filter((e) => e.status === 'PROPOSED').length,
+      proposed_all: proposedAll.length,
       published: events.filter((e) => e.status === 'PUBLISHED').length,
       needs_data: events.filter((e) => e.missing_data_fields.length > 0).length,
       today_count: events.filter((e) => e.event_date === todayIso()).length,
+    },
+  });
+});
+
+/** Toàn bộ đề xuất đang chờ duyệt, sắp theo ngày/giờ; có lọc tối thiểu để màn duyệt dùng lại. */
+router.get('/proposals', (req, res) => {
+  const s = getState();
+  const status = String(req.query.status || 'PROPOSED').toUpperCase();
+  const from = String(req.query.from || '');
+  const to = String(req.query.to || '');
+  let list = s.events.filter((e) => (status === 'ALL' ? true : e.status === status));
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) list = list.filter((e) => e.event_date >= from);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) list = list.filter((e) => e.event_date <= to);
+  list = list.sort((a, b) => `${a.event_date} ${a.start_time}`.localeCompare(`${b.event_date} ${b.start_time}`));
+  const bySource = new Map<string, number>();
+  for (const ev of list) bySource.set(ev.source_document || 'Không rõ nguồn', (bySource.get(ev.source_document || 'Không rõ nguồn') || 0) + 1);
+  res.json({
+    proposals: list,
+    counts: {
+      total: list.length,
+      high_priority: list.filter((e) => e.priority_score >= 85).length,
+      missing_data: list.filter((e) => e.missing_data_fields.length > 0).length,
+    },
+    by_source: [...bySource.entries()].map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count),
+  });
+});
+
+/** Lưới lịch tháng thật: 6 tuần (42 ngày) bắt đầu từ Thứ Hai của tuần chứa ngày 1. */
+router.get('/calendar/month', (req, res) => {
+  const raw = String(req.query.month || '').trim();
+  const match = /^(\d{4})-(\d{2})$/.exec(raw);
+  const now = new Date();
+  const year = match ? Number(match[1]) : now.getFullYear();
+  const month = match ? Math.min(12, Math.max(1, Number(match[2]))) : now.getMonth() + 1;
+  const first = `${year}-${String(month).padStart(2, '0')}-01`;
+  const gridStart = startOfWeek(first);
+  const gridEnd = addDays(gridStart, 41);
+  const s = getState();
+  const events = eventsBetween(gridStart, gridEnd);
+  const holidays = new Map(holidaysInRange(gridStart, gridEnd).map((h) => [h.date, h.name]));
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const date = addDays(gridStart, index);
+    const dow = fromIso(date).getDay();
+    return {
+      date,
+      display_date: `${date.slice(8, 10)}/${date.slice(5, 7)}`,
+      weekday: WEEKDAY_FULL[dow],
+      weekday_full: WEEKDAY_FULL[dow],
+      is_today: date === todayIso(),
+      is_weekend: dow === 0 || dow === 6,
+      in_month: date.slice(0, 7) === `${year}-${String(month).padStart(2, '0')}`,
+      holiday: holidays.get(date) ?? null,
+      events: events
+        .filter((e) => e.event_date === date)
+        .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || '')),
+    };
+  });
+  res.json({
+    month: `${year}-${String(month).padStart(2, '0')}`,
+    year,
+    month_number: month,
+    start: gridStart,
+    end: gridEnd,
+    days,
+    stats: {
+      total: events.length,
+      high_priority: events.filter((e) => e.priority_score >= 80).length,
+      proposed: events.filter((e) => e.status === 'PROPOSED').length,
+      published: events.filter((e) => e.status === 'PUBLISHED').length,
     },
   });
 });
@@ -1233,6 +1337,7 @@ router.patch('/events/:id', (req, res) => {
     'start_time', 'end_time', 'confidence', 'priority_score', 'source_id',
   ];
   const changes: string[] = [];
+  const before = structuredClone(existing);
   mutate((s) => {
     const ev = s.events.find((e) => e.id === req.params.id)!;
     for (const key of allowed) {
@@ -1254,6 +1359,13 @@ router.patch('/events/:id', (req, res) => {
     }
   });
   if (!changes.length) return res.json({ event: existing, unchanged: true });
+  addEventVersion(
+    existing.id,
+    authOf(req)?.user.username || 'hệ thống',
+    'update',
+    changes,
+    before,
+  );
   //Cán bộ sửa phân công của bản AI vừa bóc tách -> lưu thành bài học cho lần bóc tách sau.
   const learnedFields = changes.some((c) => ['chair', 'participants', 'event_date', 'start_time', 'location'].includes(c));
   if (learnedFields && existing.status === 'PROPOSED' && existing.source_document) {
@@ -1311,14 +1423,48 @@ router.post('/events/:id/status', (req, res) => {
     return res.status(422).json({ error: `Trạng thái phải là một trong: ${STATUSES.join(', ')}` });
   }
   if (!findEvent(req.params.id)) return res.status(404).json({ error: 'Không tìm thấy sự kiện' });
+  const statusBefore = structuredClone(findEvent(req.params.id)!);
   mutate((s) => {
     const ev = s.events.find((e) => e.id === req.params.id)!;
     ev.status = next as EventStatus;
     ev.updated_at = new Date().toISOString();
   });
+  addEventVersion(req.params.id, authOf(req)?.user.username || 'hệ thống', 'status', ['status'], statusBefore);
   audit(req, 'status', 'event', req.params.id, next);
   const open = refreshConflicts();
   res.json({ event: findEvent(req.params.id), open_conflicts: open });
+});
+
+// ---------------- Ý kiến duyệt & lịch sử thay đổi ----------------
+
+/** Ý kiến trao đổi trên một mục lịch (không sửa nội dung lịch). */
+router.get('/events/:id/comments', (req, res) => {
+  if (!findEvent(req.params.id)) return res.status(404).json({ error: 'Không tìm thấy sự kiện' });
+  const comments = getState().event_comments
+    .filter((c) => c.event_id === req.params.id)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  res.json({ comments });
+});
+
+router.post('/events/:id/comments', (req, res) => {
+  if (!findEvent(req.params.id)) return res.status(404).json({ error: 'Không tìm thấy sự kiện' });
+  const text = String(req.body?.text || '').trim();
+  if (!text) return res.status(422).json({ error: 'Nội dung ý kiến đang trống.' });
+  if (text.length > 2000) return res.status(422).json({ error: 'Ý kiến tối đa 2.000 ký tự.' });
+  const author = authOf(req)?.user.display_name || authOf(req)?.user.username || 'Ẩn danh';
+  const comment = addEventComment(req.params.id, author, text);
+  persist();
+  audit(req, 'comment', 'event', req.params.id, text.slice(0, 120));
+  res.status(201).json({ comment });
+});
+
+/** Lịch sử phiên bản: ảnh chụp trước mỗi lần sửa/đổi trạng thái. */
+router.get('/events/:id/versions', (req, res) => {
+  if (!findEvent(req.params.id)) return res.status(404).json({ error: 'Không tìm thấy sự kiện' });
+  const versions = getState().event_versions
+    .filter((v) => v.event_id === req.params.id)
+    .sort((a, b) => b.at.localeCompare(a.at));
+  res.json({ versions });
 });
 
 // ---------------- Việc chuẩn bị (tasks) của một mục lịch ----------------
@@ -2972,7 +3118,7 @@ Không bịa tên người ngoài dữ liệu đã cho. Trả lời tiếng Vi�
 
 // ---------------- Publish & exports (tiện ích miễn phí) ----------------
 
-router.post('/publish', (req, res) => {
+router.post('/publish', async (req, res) => {
   const week = weekParam(req);
   const publishedIds: string[] = [];
   mutate((s) => {
@@ -2984,6 +3130,18 @@ router.post('/publish', (req, res) => {
       }
     }
   });
+
+  // Không có mục nào để ban hành: không tạo lượt ban hành rỗng, không tạo link.
+  if (!publishedIds.length) {
+    return res.json({
+      week_start: week.start,
+      published: 0,
+      publication: null,
+      share: null,
+      open_conflicts: getState().conflicts.filter((c) => c.status === 'OPEN').length,
+    });
+  }
+
   const s = getState();
   const publication = rememberPublication({
     week_number: isoWeekNumber(week.start),
@@ -2995,6 +3153,26 @@ router.post('/publish', (req, res) => {
     unit_name: s.settings.unit_name,
     event_ids: publishedIds,
   });
+
+  // Ban hành xong là có ngay link xem trực tuyến (chỉ đọc, thu hồi được).
+  const token = newShareToken();
+  mutate((state) => {
+    const target = state.publications.find((p) => p.id === publication.id);
+    if (target) {
+      target.share_token = token;
+      target.share_expires_at = null;
+      target.share_pin = '';
+    }
+  });
+  const printPath = `/api/public/week/${token}/print`;
+  const url = `${publicBaseUrl(req)}${printPath}`;
+  let qrDataUrl = '';
+  try {
+    qrDataUrl = await QRCode.toDataURL(url, { margin: 1, width: 360, errorCorrectionLevel: 'M' });
+  } catch {
+    qrDataUrl = '';
+  }
+
   audit(req, 'publish', 'week', week.start, `${publishedIds.length} sự kiện APPROVED -> PUBLISHED, số ${publication.document_number}`);
   const publishedEvents = getState().events.filter((e) => publication.event_ids.includes(e.id));
   emit('week.published', {
@@ -3010,7 +3188,8 @@ router.post('/publish', (req, res) => {
   res.json({
     week_start: week.start,
     published: publishedIds.length,
-    publication,
+    publication: { ...publication, share_token: token },
+    share: { token, url, print_path: printPath, qr_data_url: qrDataUrl },
     open_conflicts: getState().conflicts.filter((c) => c.status === 'OPEN').length,
   });
 });
@@ -3054,23 +3233,67 @@ router.get('/publications', (req, res) => {
   });
 });
 
+/** Địa chỉ công khai của máy chủ, ưu tiên PUBLIC_BASE_URL khi chạy sau reverse proxy. */
+function publicBaseUrl(req: Request): string {
+  const configured = String(process.env.PUBLIC_BASE_URL || '').trim();
+  if (configured) return configured.replace(/\/+$/, '');
+  return `${req.protocol}://${req.get('host')}`;
+}
+
+/** Kiểm tra hiệu lực của link chia sẻ: hết hạn hoặc sai PIN. */
+function shareIssue(pub: PublicationRecord, pin: unknown): 'expired' | 'pin_required' | null {
+  if (pub.share_expires_at && new Date(pub.share_expires_at).getTime() < Date.now()) return 'expired';
+  if (pub.share_pin && String(pin ?? '') !== pub.share_pin) return 'pin_required';
+  return null;
+}
+
 /** Bật link công khai cho một lần ban hành; token ngẫu nhiên, thu hồi được và không cần đăng nhập để xem. */
-router.post('/publications/:id/share', (req, res) => {
+router.post('/publications/:id/share', async (req, res) => {
   const pub = getState().publications.find((p) => p.id === req.params.id);
   if (!pub) return res.status(404).json({ error: 'Không tìm thấy lần ban hành' });
+  const days = Math.max(0, Math.min(365, Number(req.body?.expires_in_days) || 0));
+  const pin = String(req.body?.pin ?? '').replace(/\D/g, '').slice(0, 6);
+  if (pin && !/^\d{4,6}$/.test(pin)) {
+    return res.status(422).json({ error: 'Mã PIN phải là 4–6 chữ số (hoặc để trống).' });
+  }
   const token = pub.share_token || newShareToken();
+  const expiresAt = days > 0 ? new Date(Date.now() + days * 86400000).toISOString() : null;
   mutate((s) => {
     const target = s.publications.find((p) => p.id === req.params.id)!;
     target.share_token = token;
+    target.share_expires_at = expiresAt;
+    target.share_pin = pin;
   });
-  audit(req, 'share_enable', 'publication', pub.id, `tuần ${pub.week_start}`);
+  audit(req, 'share_enable', 'publication', pub.id, `tuần ${pub.week_start}${expiresAt ? ` · hết hạn ${expiresAt.slice(0, 10)}` : ''}${pin ? ' · có PIN' : ''}`);
   persist();
+  const printPath = `/api/public/week/${token}/print`;
+  const url = `${publicBaseUrl(req)}${printPath}`;
+  let qrDataUrl = '';
+  try {
+    qrDataUrl = await QRCode.toDataURL(url, { margin: 1, width: 360, errorCorrectionLevel: 'M' });
+  } catch {
+    qrDataUrl = '';
+  }
   res.json({
     share_token: token,
-    print_path: `/api/public/week/${token}/print`,
-    json_path: `/api/public/week/${token}`,
+    share_expires_at: expiresAt,
+    share_pin: pin,
+    print_path: printPath,
+    url,
+    qr_data_url: qrDataUrl,
     views: getState().share_access.filter((a) => a.token === token).length,
   });
+});
+
+/** Ảnh QR của link đang chia sẻ, dùng cho màn Xuất bản. */
+router.get('/publications/:id/qr', async (req, res) => {
+  const pub = getState().publications.find((p) => p.id === req.params.id);
+  if (!pub) return res.status(404).json({ error: 'Không tìm thấy lần ban hành' });
+  if (!pub.share_token) return res.status(409).json({ error: 'Tuần này chưa bật link công khai.' });
+  const printPath = `/api/public/week/${pub.share_token}/print`;
+  const url = `${publicBaseUrl(req)}${printPath}`;
+  const qr_data_url = await QRCode.toDataURL(url, { margin: 1, width: 360, errorCorrectionLevel: 'M' });
+  res.json({ url, print_path: printPath, qr_data_url, share_pin: pub.share_pin, share_expires_at: pub.share_expires_at });
 });
 
 /** Tắt link: người dùng cũ sẽ nhận "link không còn hiệu lực". */
@@ -3081,6 +3304,8 @@ router.delete('/publications/:id/share', (req, res) => {
   mutate((s) => {
     const target = s.publications.find((p) => p.id === req.params.id)!;
     target.share_token = '';
+    target.share_expires_at = null;
+    target.share_pin = '';
   });
   audit(req, 'share_disable', 'publication', pub.id, `tuần ${pub.week_start}`);
   persist();
@@ -3103,6 +3328,9 @@ function sharedPublication(token: string): { pub: PublicationRecord; events: Eve
 router.get('/public/week/:token', (req, res) => {
   const found = sharedPublication(req.params.token);
   if (!found) return res.status(404).json({ error: 'Link không còn hiệu lực hoặc chưa từng được chia sẻ.' });
+  const issue = shareIssue(found.pub, req.query.pin);
+  if (issue === 'expired') return res.status(410).json({ error: 'Link chia sẻ đã hết hạn. Hãy đề nghị đơn vị bật lại link mới.' });
+  if (issue === 'pin_required') return res.status(401).json({ error: 'Link này cần mã PIN. Nhập PIN do đơn vị cung cấp.', pin_required: true });
   const { pub, events } = found;
   noteShareAccess(req.params.token, pub.week_start);
   persist();
@@ -3130,14 +3358,30 @@ router.get('/public/week/:token', (req, res) => {
 router.get('/public/week/:token/print', (req, res) => {
   const found = sharedPublication(req.params.token);
   if (!found) {
-    res.status(404).type('html; charset=utf-8').send('<!DOCTYPE html><meta charset="utf-8"><title>Link hết hạn</title><body style="font-family:&#39;Segoe UI&#39;,system-ui,-apple-system,Roboto,Arial,sans-serif;padding:40px">Link chia sẻ lịch công tác không còn hiệu lực.</body>');
+    res.status(404).set('Content-Type', 'text/html; charset=utf-8').send('<!DOCTYPE html><meta charset="utf-8"><title>Link hết hạn</title><body style="font-family:&#39;Segoe UI&#39;,system-ui,-apple-system,Roboto,Arial,sans-serif;padding:40px">Link chia sẻ lịch công tác không còn hiệu lực.</body>');
+    return;
+  }
+  const issue = shareIssue(found.pub, req.query.pin);
+  if (issue === 'expired') {
+    res.status(410).set('Content-Type', 'text/html; charset=utf-8').send('<!DOCTYPE html><meta charset="utf-8"><title>Link hết hạn</title><body style="font-family:&#39;Segoe UI&#39;,system-ui,-apple-system,Roboto,Arial,sans-serif;padding:40px">Link chia sẻ lịch công tác đã hết hạn.</body>');
+    return;
+  }
+  if (issue === 'pin_required') {
+    const wrong = req.query.pin !== undefined;
+    res.status(401).set('Content-Type', 'text/html; charset=utf-8').send(`<!DOCTYPE html><meta charset="utf-8"><title>Nhập mã PIN</title><body style="font-family:'Segoe UI',system-ui,sans-serif;padding:40px;max-width:420px;margin:0 auto">
+      <h2 style="color:#0F2A5F;font-size:18px">Lịch công tác được bảo vệ</h2>
+      <p style="color:#475569;font-size:14px">Nhập mã PIN do đơn vị cung cấp để xem lịch.</p>
+      ${wrong ? '<p style="color:#B91C1C;font-size:13px">Mã PIN không đúng, vui lòng thử lại.</p>' : ''}
+      <form method="get"><input name="pin" inputmode="numeric" maxlength="6" autofocus style="font-size:20px;letter-spacing:8px;padding:8px 12px;width:160px;border:1px solid #CBD5E1;border-radius:8px">
+      <button type="submit" style="margin-left:8px;background:#2563EB;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:700">Xem lịch</button></form>
+    </body>`);
     return;
   }
   const { pub, events } = found;
   noteShareAccess(req.params.token, pub.week_start);
   persist();
   res.setHeader('Cache-Control', 'no-store');
-  res.type('html; charset=utf-8').send(officialDocumentHtml({
+  res.set('Content-Type', 'text/html; charset=utf-8').send(officialDocumentHtml({
     events,
     settings: { ...getState().settings, unit_name: pub.unit_name, document_number: pub.document_number, signer: pub.signer },
     weekStart: pub.week_start,
@@ -3155,6 +3399,38 @@ router.get('/export/ics', (req, res) => {
   const ics = buildIcs(events, `Lịch công tác tuần ${isoWeekNumber(start)} - ${s.settings.unit_name}`);
   res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="lich-tuan-${start}.ics"`);
+  res.send(ics);
+});
+
+/** Địa chỉ đăng ký lịch .ics tự cập nhật (Google/Outlook) cho tuần đã ban hành. */
+router.get('/ics/subscription', (req, res) => {
+  const token = ensureIcsToken();
+  res.json({
+    token,
+    url: `${publicBaseUrl(req)}/api/ics/feed/${token}/calendar.ics`,
+    note: 'Dán địa chỉ này vào Google Calendar › Thêm lịch › Từ URL. Chỉ chia sẻ cho người cần xem.',
+  });
+});
+
+router.post('/ics/subscription/rotate', (req, res) => {
+  const token = rotateIcsToken();
+  audit(req, 'rotate', 'ics_subscription', token.slice(0, 8), 'Tạo khoá đăng ký lịch .ics mới');
+  persist();
+  res.json({ token, url: `${publicBaseUrl(req)}/api/ics/feed/${token}/calendar.ics` });
+});
+
+/** Feed .ics công khai theo khoá: chỉ các mục đã PUBLISHED, không lộ đề xuất hay việc nội bộ. */
+router.get('/ics/feed/:token/calendar.ics', (req, res) => {
+  const s = getState();
+  if (!s.ics_token || req.params.token !== s.ics_token) {
+    return res.status(404).type('text/plain; charset=utf-8').send('Khoá đăng ký lịch không còn hiệu lực.');
+  }
+  const start = addDays(todayIso(), -30);
+  const end = addDays(todayIso(), 180);
+  const events = eventsBetween(start, end).filter((e) => e.status === 'PUBLISHED');
+  const ics = buildIcs(events, `Lịch công tác - ${s.settings.unit_name}`);
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
   res.send(ics);
 });
 
