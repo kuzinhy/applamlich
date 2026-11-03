@@ -545,6 +545,12 @@ function emptyState(): StoreState {
 }
 
 let state: StoreState | null = null;
+let storeRevision = 1;
+let seedSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function getStoreRevision(): number {
+  return storeRevision;
+}
 
 /** Migration an toàn: mọi bản store cũ đều được chuẩn hoá lại theo schema hiện tại,
     không dựng lại từ đầu (tránh mất lịch thật khi nâng SCHEMA_VERSION). */
@@ -741,6 +747,7 @@ export function rememberPublication(pub: Omit<PublicationRecord, 'id' | 'publish
 
 export function persist(): void {
   if (!state) return;
+  storeRevision += 1;
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const tmp = `${STORE_FILE}.${process.pid}.tmp`;
@@ -750,17 +757,22 @@ export function persist(): void {
     console.warn('Lưu trữ app_store.json không thành công (môi trường serverless):', err);
   }
 
-  // Đồng bộ tự động sang data/seed_store.json khi chạy ở máy phát triển để khi push/deploy lên Vercel luôn có dữ liệu mới nhất
+  // Đồng bộ tự động sang data/seed_store.json khi chạy ở máy phát triển (gom nhóm bất đồng bộ tránh nghẽn I/O)
   if (!isVercel && !process.env.APP_DATA_DIR && process.env.NODE_ENV !== 'test') {
-    try {
-      // seed nằm trong repo công khai nên đi qua đúng bộ lọc khoá như lúc nạp vào.
-      const seedPayload = stripSeedSecrets(state as unknown as Record<string, any>);
-      const seedTmp = `${SEED_FILE}.${process.pid}.tmp`;
-      fs.writeFileSync(seedTmp, JSON.stringify(seedPayload, null, 2), 'utf8');
-      fs.renameSync(seedTmp, SEED_FILE);
-    } catch {
-      // Bỏ qua nếu thư mục không cho phép ghi
-    }
+    if (seedSyncTimer) clearTimeout(seedSyncTimer);
+    seedSyncTimer = setTimeout(() => {
+      seedSyncTimer = null;
+      if (!state) return;
+      try {
+        const seedPayload = stripSeedSecrets(state as unknown as Record<string, any>);
+        const seedTmp = `${SEED_FILE}.${process.pid}.tmp`;
+        fs.writeFileSync(seedTmp, JSON.stringify(seedPayload, null, 2), 'utf8');
+        fs.renameSync(seedTmp, SEED_FILE);
+      } catch {
+        // Bỏ qua nếu thư mục không cho phép ghi
+      }
+    }, 250);
+    seedSyncTimer.unref?.();
   }
 
   if (cloudEnabled() && !applyingCloud) queueCloudPush();

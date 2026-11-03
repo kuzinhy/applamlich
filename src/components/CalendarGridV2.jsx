@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, MapPin, Plus, AlertTriangle, Sparkles, Loader2, User, GripVertical } from 'lucide-react';
 import { api } from '../services/api';
 import { foldVietnamese } from '../utils/vietnamese';
+import { parseEventMinutes, sortDayEvents } from '../utils/vietnameseOcrCleanup';
 
 const MORNING_SLOTS = [
   { start: '07:00', end: '08:30', label: '07:00 – Đầu giờ sáng' },
@@ -16,45 +17,9 @@ const AFTERNOON_SLOTS = [
 const MORNING = 'Sáng';
 const AFTERNOON = 'Chiều';
 
-function parseEventMinutes(evOrTime, fallbackText = '') {
-  const rawTime = typeof evOrTime === 'object' && evOrTime !== null
-    ? String(evOrTime.start_time || evOrTime.time_slot || '')
-    : String(evOrTime || '');
-  const context = typeof evOrTime === 'object' && evOrTime !== null
-    ? `${rawTime} ${evOrTime.title || ''} ${evOrTime.content || ''}`
-    : `${rawTime} ${fallbackText}`;
-
-  const cleaned = rawTime
-    .trim()
-    .replace(/(\d)\s+(?=\d)/g, '$1');
-  const ctxLower = context.toLowerCase();
-  const isPM = /(buổi\s*chiều|buoi\s*chieu|\bchiều\b|\bchieu\b|buổi\s*tối|buoi\s*toi|\btối\b|\btoi\b|\bpm\b)/i.test(ctxLower);
-  const isAM = /(buổi\s*sáng|buoi\s*sang|\bsáng\b|\bsang\b|\bam\b)/i.test(ctxLower);
-
-  const m = /(\d{1,2})\s*(?::|giờ|gio|g|h)\s*(\d{0,2})/i.exec(cleaned) || /^(\d{1,2})$/.exec(cleaned);
-  if (!m) {
-    return isPM && !isAM ? 14 * 60 : 8 * 60;
-  }
-  let hour = parseInt(m[1], 10);
-  const minute = m[2] ? parseInt(m[2], 10) : 0;
-  if (Number.isNaN(hour)) return 8 * 60;
-  if (isPM && hour < 12) hour += 12;
-  else if (!isAM && hour >= 1 && hour <= 5) hour += 12;
-  return hour * 60 + (Number.isNaN(minute) ? 0 : minute);
-}
-
 function periodOf(evOrTime = '08:00', fallbackText = '') {
   const mins = parseEventMinutes(evOrTime, fallbackText);
   return mins < 12 * 60 ? MORNING : AFTERNOON;
-}
-
-function sortDayEvents(list) {
-  return [...(list || [])].sort((a, b) => {
-    if (typeof a.sort_order === 'number' && typeof b.sort_order === 'number' && a.sort_order !== b.sort_order) {
-      return a.sort_order - b.sort_order;
-    }
-    return parseEventMinutes(a) - parseEventMinutes(b);
-  });
 }
 
 function getEventColorStyle(ev, hasConflict) {
@@ -163,7 +128,7 @@ export default function CalendarGridV2({
     setMonthKey(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   };
 
-  const days = daysProp.map((d) => ({
+  const days = useMemo(() => daysProp.map((d) => ({
     name: d.weekday_full || d.name || '',
     date: d.display_date || d.date || '',
     fullDate: d.date || d.fullDate || '',
@@ -171,7 +136,7 @@ export default function CalendarGridV2({
     isWeekend: Boolean(d.is_weekend ?? d.isWeekend),
     holiday: d.holiday || null,
     events: d.events || [],
-  }));
+  })), [daysProp]);
 
   const findEventById = (id) => {
     for (const d of days) {
@@ -185,7 +150,7 @@ export default function CalendarGridV2({
     return null;
   };
 
-  const cadreOptions = (() => {
+  const cadreOptions = useMemo(() => {
     const seen = new Set();
     const options = [];
     const push = (value, label) => {
@@ -204,9 +169,9 @@ export default function CalendarGridV2({
       }
     }
     return options.slice(0, 60);
-  })();
+  }, [personnel, days]);
 
-  const locationOptions = (() => {
+  const locationOptions = useMemo(() => {
     const seen = new Set();
     const options = [];
     for (const d of days) {
@@ -219,7 +184,7 @@ export default function CalendarGridV2({
       }
     }
     return options.sort((a, b) => a.localeCompare(b, 'vi'));
-  })();
+  }, [days]);
 
   const filterEvent = (ev) => {
     if (searchQuery) {

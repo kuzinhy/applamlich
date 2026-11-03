@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import SidebarV2 from './components/SidebarV2';
 import TopbarV2 from './components/TopbarV2';
 import CommandBar from './components/CommandBar';
@@ -6,21 +7,21 @@ import CalendarGridV2 from './components/CalendarGridV2';
 import RightAIPanel from './components/RightAIPanel';
 import BottomSummaryCards from './components/BottomSummaryCards';
 import EventPopover from './components/EventPopover';
+import LoginView from './components/LoginView';
+import { formatWeekForZalo, copyToClipboard } from './utils/zaloFormatter';
+import { api, currentWeekStart, mondayOf } from './services/api';
+import { WifiOff, Download, HardDrive } from 'lucide-react';
+
 const AgencyAdvisorView = lazy(() => import('./components/AgencyAdvisorView'));
 const OfficialDocumentView = lazy(() => import('./components/OfficialDocumentView'));
 const ConflictsView = lazy(() => import('./components/ConflictsView'));
 const SettingsView = lazy(() => import('./components/SettingsView'));
 const PasteModal = lazy(() => import('./components/PasteModal'));
 const EditEventModal = lazy(() => import('./components/EditEventModal'));
-const SourceIngestion = lazy(() => import('./components/SourceIngestion'));
-const AIBrainView = lazy(() => import('./components/AIBrainView'));
-const PartyDetectionView = lazy(() => import('./components/PartyDetectionView'));
 const AiHubView = lazy(() => import('./components/AiHubView'));
-import LoginView from './components/LoginView';
 const DriveSetupWizard = lazy(() => import('./components/DriveSetupWizard'));
 const UsersView = lazy(() => import('./components/UsersView'));
 const DashboardView = lazy(() => import('./components/DashboardView'));
-const ProposedView = lazy(() => import('./components/ProposedView'));
 const TemplatesView = lazy(() => import('./components/TemplatesView'));
 const ExportView = lazy(() => import('./components/ExportView'));
 const TrashView = lazy(() => import('./components/TrashView'));
@@ -32,9 +33,6 @@ const ExtractPreviewModal = lazy(() => import('./components/ExtractPreviewModal'
 const GlobalSearchModal = lazy(() => import('./components/GlobalSearchModal'));
 const AdministrativeTableView = lazy(() => import('./components/AdministrativeTableView'));
 const ExecutiveKioskModal = lazy(() => import('./components/ExecutiveKioskModal'));
-import { formatWeekForZalo, copyToClipboard } from './utils/zaloFormatter';
-import { api, currentWeekStart, mondayOf } from './services/api';
-import { WifiOff, Download, HardDrive } from 'lucide-react';
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const FONT_ZOOMS = [0.92, 1, 1.1];
@@ -55,12 +53,13 @@ function isDuplicateSourceError(err) {
   return err?.status === 409 && err?.payload?.code === 'DUPLICATE_SOURCE';
 }
 
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
-
 export default function App() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('calendar'); // 'dashboard' | 'brain' | 'advisor' | 'calendar' | 'sources' | 'proposed' | 'settings' | 'conflicts'
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(() => {
+    const seg = location.pathname.replace(/^\/+/, '').split('/')[0];
+    return seg || 'dashboard';
+  });
   const [weekStart, setWeekStart] = useState(currentWeekStart());
   const [sources, setSources] = useState([]);
   const [proposedEvents, setProposedEvents] = useState([]);
@@ -204,7 +203,17 @@ export default function App() {
     };
   }, [authAttempt]);
 
-  const can = (perm) => Boolean(session?.permissions?.includes(perm));
+  const can = useCallback((perm) => Boolean(session?.permissions?.includes(perm)), [session]);
+
+  useEffect(() => {
+    const seg = location.pathname.replace(/^\/+/, '').split('/')[0];
+    if (seg === 'table') {
+      setViewMode('table');
+      setActiveTab('calendar');
+    } else if (seg) {
+      setActiveTab(seg);
+    }
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     loadSequence.current += 1;
@@ -254,13 +263,13 @@ export default function App() {
   };
 
   // Địa điểm đã xuất hiện trong dữ liệu thật — dùng làm gợi ý thay cho danh sách hardcode.
-  const knownLocations = Array.from(new Set([
+  const knownLocations = useMemo(() => Array.from(new Set([
     ...(weekData?.days || []).flatMap((d) => (d.events || []).map((e) => e.location)),
     ...proposedEvents.map((e) => e.location),
-  ].filter(Boolean)));
+  ].filter(Boolean))), [weekData?.days, proposedEvents]);
 
   /** Phím tắt: n thêm lịch, t về tuần này, ←/→ chuyển tuần, / tìm kiếm, ? trợ giúp. */
-  const handleNavigate = (tab) => {
+  const handleNavigate = useCallback((tab) => {
     if (!tab) return;
     setIsOfficialDocMode(false);
     if (tab === 'table') {
@@ -271,7 +280,7 @@ export default function App() {
     }
     setActiveTab(tab);
     navigate(`/${tab}`);
-  };
+  }, [navigate]);
 
   useEffect(() => {
     if (!session) return undefined;
@@ -812,9 +821,9 @@ export default function App() {
     }
   };
 
-  const conflictIds = new Set(
+  const conflictIds = useMemo(() => new Set(
     (weekData?.conflicts || []).filter((c) => c.status === 'OPEN').flatMap((c) => [c.event_id_1, c.event_id_2])
-  );
+  ), [weekData?.conflicts]);
 
   if (!authReady) {
     return (
@@ -990,7 +999,6 @@ export default function App() {
   );
 
   return (
-    <Suspense fallback={<div className="app-recovery" role="status">Đang tải không gian làm việc…</div>}>
     <div className="tg-shell tg-zoom" style={{ zoom: FONT_ZOOMS[fontLevel] }}>
       {toastMessage && (
         <div style={{
@@ -1001,10 +1009,10 @@ export default function App() {
           display: 'flex', alignItems: 'center', gap: '12px', maxWidth: 'min(560px, 88vw)'
         }}>
           <span>{toastMessage}</span>
-          {toastAction && (
+          {(toastAction?.run || toastAction?.onAction) && (
             <button
               onClick={async () => {
-                const run = toastAction.run;
+                const run = toastAction.run || toastAction.onAction;
                 setToastMessage(null);
                 setToastAction(null);
                 await run();
@@ -1014,7 +1022,7 @@ export default function App() {
                 padding: '6px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', flexShrink: 0
               }}
             >
-              {toastAction.label}
+              {toastAction.label || toastAction.actionLabel || 'Hoàn tác'}
             </button>
           )}
         </div>
@@ -1034,25 +1042,29 @@ export default function App() {
         </button>
       )}
 
-      <DriveSetupWizard
-        open={driveSetupOpen}
-        clientId={googleAuth?.client_id || ''}
-        unitName={settings?.unit_name || ''}
-        onDone={(folder) => {
-          setDriveSetupOpen(false);
-          setSession((prev) => (prev ? {
-            ...prev,
-            drive_setup: {
-              ...(prev.drive_setup || {}),
-              connected: true,
-              folder_id: folder.folder_id,
-              folder_name: folder.folder_name,
-            },
-          } : prev));
-          showToast(`Đã gắn thư mục “${folder.folder_name}” vào tài khoản`);
-        }}
-        onSkip={() => setDriveSetupOpen(false)}
-      />
+      {driveSetupOpen && (
+        <Suspense fallback={null}>
+          <DriveSetupWizard
+            open={driveSetupOpen}
+            clientId={googleAuth?.client_id || ''}
+            unitName={settings?.unit_name || ''}
+            onDone={(folder) => {
+              setDriveSetupOpen(false);
+              setSession((prev) => (prev ? {
+                ...prev,
+                drive_setup: {
+                  ...(prev.drive_setup || {}),
+                  connected: true,
+                  folder_id: folder.folder_id,
+                  folder_name: folder.folder_name,
+                },
+              } : prev));
+              showToast(`Đã gắn thư mục “${folder.folder_name}” vào tài khoản`);
+            }}
+            onSkip={() => setDriveSetupOpen(false)}
+          />
+        </Suspense>
+      )}
 
       <input
         ref={fileInputRef}
@@ -1144,59 +1156,61 @@ export default function App() {
               </button>
             </div>
           )}
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/calendar" element={renderCalendarWorkspace()} />
-            <Route path="/table" element={renderCalendarWorkspace()} />
-            <Route path="/dashboard" element={
-              <DashboardView
-                weekData={weekData}
-                sources={sources}
-                proposedEvents={proposedEvents}
-                conflicts={conflicts}
-                settings={settings}
-                onNavigate={handleNavigate}
-                onApprove={(id) => handleSetEventStatus(id, 'APPROVED')}
-                onReject={(id) => handleSetEventStatus(id, 'REJECTED')}
-                onSelectEvent={(ev) => setSelectedEventForPopover(ev)}
-                canInstall={Boolean(installPrompt)}
-                onInstall={handleInstall}
-              />
-            } />
-            <Route path="/sources" element={renderAiHub('sources')} />
-            <Route path="/proposed" element={renderAiHub('proposed')} />
-            <Route path="/signals" element={renderAiHub('signals')} />
-            <Route path="/brain" element={renderAiHub('brain')} />
-            <Route path="/assistant" element={renderAiHub('assistant')} />
-            <Route path="/advisor" element={<AgencyAdvisorView weekStart={weekStart} onChangeWeekStart={goToDate} showToast={showToast} />} />
-            <Route path="/conflicts" element={
-              <ConflictsView
-                conflicts={conflicts}
-                weekStart={weekStart}
-                weekRange={weekData ? `${formatShortDate(weekData.start_date)} – ${formatShortDate(weekData.end_date)}` : ''}
-                onResolve={async (id) => {
-                  try {
-                    await api.resolveConflict(id);
-                    await loadData();
-                    showToast('Đã đóng cảnh báo. Giờ giấc và thành phần hai mục lịch vẫn giữ nguyên như cũ.');
-                  } catch (err) {
-                    showToast(`Không ghi nhận được: ${err.message}`);
-                  }
-                }}
-                onAiSuggest={(id) => api.aiSuggestConflictFix(id)}
-                onReanalyze={handleReanalyzeConflicts}
-                showToast={showToast}
-                can={can}
-              />
-            } />
-            <Route path="/export" element={<ExportView weekStart={weekStart} onToast={showToast} can={can} />} />
-            <Route path="/templates" element={<TemplatesView weekStart={weekStart} onToast={showToast} />} />
-            <Route path="/users" element={<UsersView showToast={showToast} currentUserId={session.id} />} />
-            <Route path="/settings" element={<SettingsView settings={settings} onSaved={() => loadData()} showToast={showToast} can={can} session={session} onDataChanged={() => loadData()} />} />
-            <Route path="/trash" element={<TrashView onToast={showToast} can={can} onDataChanged={() => loadData()} />} />
-            <Route path="/help" element={<HelpView />} />
-            <Route path="*" element={<Navigate to="/calendar" replace />} />
-          </Routes>
+          <Suspense fallback={<div className="app-recovery" role="status">Đang tải không gian làm việc…</div>}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/calendar" element={renderCalendarWorkspace()} />
+              <Route path="/table" element={renderCalendarWorkspace()} />
+              <Route path="/dashboard" element={
+                <DashboardView
+                  weekData={weekData}
+                  sources={sources}
+                  proposedEvents={proposedEvents}
+                  conflicts={conflicts}
+                  settings={settings}
+                  onNavigate={handleNavigate}
+                  onApprove={(id) => handleSetEventStatus(id, 'APPROVED')}
+                  onReject={(id) => handleSetEventStatus(id, 'REJECTED')}
+                  onSelectEvent={(ev) => setSelectedEventForPopover(ev)}
+                  canInstall={Boolean(installPrompt)}
+                  onInstall={handleInstall}
+                />
+              } />
+              <Route path="/sources" element={renderAiHub('sources')} />
+              <Route path="/proposed" element={renderAiHub('proposed')} />
+              <Route path="/signals" element={renderAiHub('signals')} />
+              <Route path="/brain" element={renderAiHub('brain')} />
+              <Route path="/assistant" element={renderAiHub('assistant')} />
+              <Route path="/advisor" element={<AgencyAdvisorView weekStart={weekStart} onChangeWeekStart={goToDate} showToast={showToast} />} />
+              <Route path="/conflicts" element={
+                <ConflictsView
+                  conflicts={conflicts}
+                  weekStart={weekStart}
+                  weekRange={weekData ? `${formatShortDate(weekData.start_date)} – ${formatShortDate(weekData.end_date)}` : ''}
+                  onResolve={async (id) => {
+                    try {
+                      await api.resolveConflict(id);
+                      await loadData();
+                      showToast('Đã đóng cảnh báo. Giờ giấc và thành phần hai mục lịch vẫn giữ nguyên như cũ.');
+                    } catch (err) {
+                      showToast(`Không ghi nhận được: ${err.message}`);
+                    }
+                  }}
+                  onAiSuggest={(id) => api.aiSuggestConflictFix(id)}
+                  onReanalyze={handleReanalyzeConflicts}
+                  showToast={showToast}
+                  can={can}
+                />
+              } />
+              <Route path="/export" element={<ExportView weekStart={weekStart} onToast={showToast} can={can} />} />
+              <Route path="/templates" element={<TemplatesView weekStart={weekStart} onToast={showToast} />} />
+              <Route path="/users" element={<UsersView showToast={showToast} currentUserId={session.id} />} />
+              <Route path="/settings" element={<SettingsView settings={settings} onSaved={() => loadData()} showToast={showToast} can={can} session={session} onDataChanged={() => loadData()} />} />
+              <Route path="/trash" element={<TrashView onToast={showToast} can={can} onDataChanged={() => loadData()} />} />
+              <Route path="/help" element={<HelpView />} />
+              <Route path="*" element={<Navigate to="/calendar" replace />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
 
@@ -1207,98 +1221,113 @@ export default function App() {
         onEdit={(ev) => {
           handleOpenEditEvent(ev);
         }}
-        onFullDetail={(ev) => {
+        onFullDetail={() => {
           setSelectedEventForPopover(null);
           setIsOfficialDocMode(true);
         }}
       />
 
-      <PasteModal
-        isOpen={isPasteModalOpen}
-        onClose={() => setIsPasteModalOpen(false)}
-        onSubmit={handlePasteSubmit}
-        initialMode={pasteModalMode}
-      />
+      <Suspense fallback={null}>
+        {isPasteModalOpen && (
+          <PasteModal
+            isOpen={isPasteModalOpen}
+            onClose={() => setIsPasteModalOpen(false)}
+            onSubmit={handlePasteSubmit}
+            initialMode={pasteModalMode}
+          />
+        )}
 
-      {extractPreview && (
-        <ExtractPreviewModal
-          isOpen
-          fileName={extractPreview.file_name}
-          items={extractPreview.items}
-          counts={extractPreview.counts}
-          rejected={extractPreview.rejected}
-          isSupplementalMode={Boolean(extractPreview.is_supplemental)}
-          existingEventsCount={weekData?.stats?.total ?? 0}
-          weekLabel={
-            extractPreview.week
-              ? `${formatShortDate(extractPreview.week.start)} – ${formatShortDate(extractPreview.week.end)}`
-              : ''
-          }
-          isBusy={isImportingExtract}
-          onClose={() => setExtractPreview(null)}
-          onConfirm={handleImportExtracted}
-        />
-      )}
+        {extractPreview && (
+          <ExtractPreviewModal
+            isOpen
+            fileName={extractPreview.file_name}
+            items={extractPreview.items}
+            counts={extractPreview.counts}
+            rejected={extractPreview.rejected}
+            isSupplementalMode={Boolean(extractPreview.is_supplemental)}
+            existingEventsCount={weekData?.stats?.total ?? 0}
+            weekLabel={
+              extractPreview.week
+                ? `${formatShortDate(extractPreview.week.start)} – ${formatShortDate(extractPreview.week.end)}`
+                : ''
+            }
+            isBusy={isImportingExtract}
+            onClose={() => setExtractPreview(null)}
+            onConfirm={handleImportExtracted}
+          />
+        )}
 
-      <QuickAddModal
-        isOpen={isQuickAddOpen}
-        onClose={() => setIsQuickAddOpen(false)}
-        weekStart={weekStart}
-        onSave={handleSaveEvent}
-        onOpenFullEdit={(prefilledData) => {
-          setEventToEdit(prefilledData);
-          setIsEditModalOpen(true);
-        }}
-      />
+        {isQuickAddOpen && (
+          <QuickAddModal
+            isOpen={isQuickAddOpen}
+            onClose={() => setIsQuickAddOpen(false)}
+            weekStart={weekStart}
+            onSave={handleSaveEvent}
+            onOpenFullEdit={(prefilledData) => {
+              setEventToEdit(prefilledData);
+              setIsEditModalOpen(true);
+            }}
+          />
+        )}
 
-      <PublishResultModal
-        result={publishResult}
-        onClose={() => setPublishResult(null)}
-        onToast={showToast}
-      />
+        {publishResult && (
+          <PublishResultModal
+            result={publishResult}
+            onClose={() => setPublishResult(null)}
+            onToast={showToast}
+          />
+        )}
 
-      <EditEventModal
-        isOpen={isEditModalOpen}
-        event={eventToEdit}
-        focusField={editFocusField}
-        onClose={() => { setIsEditModalOpen(false); setEventToEdit(null); setEditFocusField(''); }}
-        onSave={handleSaveEvent}
-        onDelete={handleDeleteEvent}
-        personnel={personnel}
-        knownLocations={knownLocations}
-        onDataChanged={() => loadData()}
-      />
+        {isEditModalOpen && (
+          <EditEventModal
+            isOpen={isEditModalOpen}
+            event={eventToEdit}
+            focusField={editFocusField}
+            onClose={() => { setIsEditModalOpen(false); setEventToEdit(null); setEditFocusField(''); }}
+            onSave={handleSaveEvent}
+            onDelete={handleDeleteEvent}
+            personnel={personnel}
+            knownLocations={knownLocations}
+            onDataChanged={() => loadData()}
+          />
+        )}
 
-      <ShortcutHelpModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+        {shortcutsOpen && (
+          <ShortcutHelpModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+        )}
 
-      <GlobalSearchModal
-        open={isGlobalSearchOpen}
-        query={searchQuery}
-        setQuery={setSearchQuery}
-        loading={searchLoading}
-        error={searchError}
-        result={searchResults}
-        onClose={() => setIsGlobalSearchOpen(false)}
-        onSearch={runGlobalSearch}
-        onJumpToWeek={(week) => {
-          setIsGlobalSearchOpen(false);
-          handleNavigate('calendar');
-          goToDate(week);
-        }}
-        onOpenSources={() => {
-          setIsGlobalSearchOpen(false);
-          handleNavigate('sources');
-        }}
-      />
+        {isGlobalSearchOpen && (
+          <GlobalSearchModal
+            open={isGlobalSearchOpen}
+            query={searchQuery}
+            setQuery={setSearchQuery}
+            loading={searchLoading}
+            error={searchError}
+            result={searchResults}
+            onClose={() => setIsGlobalSearchOpen(false)}
+            onSearch={runGlobalSearch}
+            onJumpToWeek={(week) => {
+              setIsGlobalSearchOpen(false);
+              handleNavigate('calendar');
+              goToDate(week);
+            }}
+            onOpenSources={() => {
+              setIsGlobalSearchOpen(false);
+              handleNavigate('sources');
+            }}
+          />
+        )}
 
-      <ExecutiveKioskModal
-        isOpen={isKioskOpen}
-        onClose={() => setIsKioskOpen(false)}
-        weekData={weekData}
-        settings={settings}
-        weekStart={weekStart}
-      />
+        {isKioskOpen && (
+          <ExecutiveKioskModal
+            isOpen={isKioskOpen}
+            onClose={() => setIsKioskOpen(false)}
+            weekData={weekData}
+            settings={settings}
+            weekStart={weekStart}
+          />
+        )}
+      </Suspense>
     </div>
-    </Suspense>
   );
 }

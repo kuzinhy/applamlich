@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
-  Layers, Lightbulb, Bot, ScanSearch, UploadCloud,
-  FileText, Sparkles, CheckCircle2, AlertTriangle, ArrowRight,
-  Filter, RefreshCw, Trash2
+  Layers, Lightbulb, ScanSearch, FileText
 } from 'lucide-react';
-import SourceIngestion from './SourceIngestion';
-import ProposedView from './ProposedView';
-import PartyDetectionView from './PartyDetectionView';
-import AIBrainView from './AIBrainView';
+
+const SourceIngestion = lazy(() => import('./SourceIngestion'));
+const ProposedView = lazy(() => import('./ProposedView'));
+const PartyDetectionView = lazy(() => import('./PartyDetectionView'));
+const AIBrainView = lazy(() => import('./AIBrainView'));
 
 /**
  * Trung tâm Số hoá & Trí tuệ AI (AI Hub)
@@ -40,6 +39,10 @@ export default function AiHubView({
   onAddToCalendar,
 }) {
   const [activeSubTab, setActiveSubTab] = useState(initialSubTab);
+
+  useEffect(() => {
+    if (initialSubTab) setActiveSubTab(initialSubTab);
+  }, [initialSubTab]);
 
   const tabs = [
     {
@@ -156,92 +159,94 @@ export default function AiHubView({
       </div>
 
       {/* Nội dung tương ứng của từng tab */}
-      <div>
-        {activeSubTab === 'sources' && (
-          <SourceIngestion
-            sources={sources}
-            onUploadFile={onUploadFile}
-            onOpenPasteModal={onOpenPasteModal}
-            onOpenManualModal={onOpenManualModal}
-            onExtract={onExtractSource}
-            onDeleteSource={onDeleteSource}
-            onClearAllSources={onClearAllSources}
-            onIngestDir={onIngestDir}
-            busySourceId={busySourceId}
-          />
-        )}
+      <Suspense fallback={<div style={{ padding: '24px', color: '#64748B', fontSize: '13px', fontWeight: 600 }}>Đang tải mô-đun…</div>}>
+        <div>
+          {activeSubTab === 'sources' && (
+            <SourceIngestion
+              sources={sources}
+              onUploadFile={onUploadFile}
+              onOpenPasteModal={onOpenPasteModal}
+              onOpenManualModal={onOpenManualModal}
+              onExtract={onExtractSource}
+              onDeleteSource={onDeleteSource}
+              onClearAllSources={onClearAllSources}
+              onIngestDir={onIngestDir}
+              busySourceId={busySourceId}
+            />
+          )}
 
-        {activeSubTab === 'proposed' && (
-          <ProposedView
-            proposals={proposedEvents}
-            can={can}
-            onRefresh={onRefresh}
-            onApprove={onApproveEvent}
-            onReject={onRejectEvent}
-            onEdit={onEditEvent}
-            onDelete={onDeleteEvent}
-            onToast={showToast}
-          />
-        )}
+          {activeSubTab === 'proposed' && (
+            <ProposedView
+              proposals={proposedEvents}
+              can={can}
+              onRefresh={onRefresh}
+              onApprove={onApproveEvent}
+              onReject={onRejectEvent}
+              onEdit={onEditEvent}
+              onDelete={onDeleteEvent}
+              onToast={showToast}
+            />
+          )}
 
-        {(activeSubTab === 'signals' || activeSubTab === 'brain') && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{
-              display: 'flex',
-              gap: '8px',
-              borderBottom: '1px solid #E2E8F0',
-              paddingBottom: '8px',
-            }}>
-              <button
-                type="button"
-                onClick={() => setActiveSubTab('signals')}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: activeSubTab === 'signals' ? '#E2E8F0' : 'transparent',
-                  color: activeSubTab === 'signals' ? '#0F172A' : '#64748B',
-                  fontWeight: activeSubTab === 'signals' ? 700 : 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                }}
-              >
-                Nhận diện thực thể & Tổ chức Đảng
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveSubTab('brain')}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: activeSubTab === 'brain' ? '#E2E8F0' : 'transparent',
-                  color: activeSubTab === 'brain' ? '#0F172A' : '#64748B',
-                  fontWeight: activeSubTab === 'brain' ? 700 : 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                }}
-              >
-                Trợ lý AI & Bộ nhớ thói quen (Brain)
-              </button>
+          {(activeSubTab === 'signals' || activeSubTab === 'brain') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                borderBottom: '1px solid #E2E8F0',
+                paddingBottom: '8px',
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('signals')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: activeSubTab === 'signals' ? '#E2E8F0' : 'transparent',
+                    color: activeSubTab === 'signals' ? '#0F172A' : '#64748B',
+                    fontWeight: activeSubTab === 'signals' ? 700 : 500,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Nhận diện thực thể & Tổ chức Đảng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('brain')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: activeSubTab === 'brain' ? '#E2E8F0' : 'transparent',
+                    color: activeSubTab === 'brain' ? '#0F172A' : '#64748B',
+                    fontWeight: activeSubTab === 'brain' ? 700 : 500,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Trợ lý AI & Bộ nhớ thói quen (Brain)
+                </button>
+              </div>
+
+              {activeSubTab === 'signals' ? (
+                <PartyDetectionView
+                  weekStart={weekStart}
+                  showToast={showToast}
+                  can={can}
+                  onAddToCalendar={onAddToCalendar}
+                />
+              ) : (
+                <AIBrainView
+                  showToast={showToast}
+                  onAddEventFromBrain={onAddEventFromBrain}
+                />
+              )}
             </div>
-
-            {activeSubTab === 'signals' ? (
-              <PartyDetectionView
-                weekStart={weekStart}
-                showToast={showToast}
-                can={can}
-                onAddToCalendar={onAddToCalendar}
-              />
-            ) : (
-              <AIBrainView
-                showToast={showToast}
-                onAddEventFromBrain={onAddEventFromBrain}
-              />
-            )}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </Suspense>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import {
   FileText, UploadCloud, Plus, AlertTriangle,
   Sparkles, Save, Send, Download, Eye, Trash2,
@@ -6,9 +6,16 @@ import {
   GripVertical, ArrowUp, ArrowDown, Move
 } from 'lucide-react';
 import { api, currentWeekStart, isoWeekNumber, mondayOfIsoWeek, weekRangeLabel } from '../services/api';
-import GoogleDriveModal from './GoogleDriveModal';
-import DeadlineMatrixModal from './DeadlineMatrixModal';
-import WorkloadAnalyticsModal from './WorkloadAnalyticsModal';
+import {
+  parseSlotMinutes,
+  isMorningSlot,
+  sanitizeAgencyItemClient,
+  resolveDayOfWeek,
+} from '../utils/vietnameseOcrCleanup';
+
+const GoogleDriveModal = lazy(() => import('./GoogleDriveModal'));
+const DeadlineMatrixModal = lazy(() => import('./DeadlineMatrixModal'));
+const WorkloadAnalyticsModal = lazy(() => import('./WorkloadAnalyticsModal'));
 
 const THIS_WEEK = isoWeekNumber(currentWeekStart());
 const THIS_YEAR = Number(currentWeekStart().slice(0, 4));
@@ -35,99 +42,6 @@ const headLines = (lines) => (lines || [])
   .join('<br>');
 
 const EMPTY_HEAD = { left: [], right: [] };
-
-const ISO_WEEKDAY_VI = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
-
-function cleanOcrTextClient(input) {
-  if (!input) return '';
-  return String(input)
-    .replace(/(\d)\s+(?=\d\s*(?:g\b|g\d|h\b|h\d|giờ|[:/.]))/gi, '$1')
-    .replace(/(\d{1,2})\s+([hg])\s*(\d{2})\b/gi, '$1$2$3')
-    .replace(/\bD\s+ự\b/g, 'Dự')
-    .replace(/\bd\s+ự\b/g, 'dự')
-    .replace(/\bC\s+hủ\b/g, 'Chủ')
-    .replace(/\bc\s+hủ\b/g, 'chủ')
-    .replace(/\bH\s+ọp\b/g, 'Họp')
-    .replace(/\bh\s+ọp\b/g, 'họp')
-    .replace(/\bchi\s+b\s+ộ\b/gi, 'chi bộ')
-    .replace(/\bX\s+ây\s+d\s+ựng\s+Đ\s+ảng\b/g, 'Xây dựng Đảng')
-    .replace(/\bX\s+ây\b/g, 'Xây')
-    .replace(/\bd\s+ựng\b/g, 'dựng')
-    .replace(/\bĐ\s+ảng\b/g, 'Đảng')
-    .replace(/\bđ\s+ảng\b/g, 'đảng');
-}
-
-function parseSlotMinutes(rawSlot, fallbackContent = '') {
-  const cleanedCtx = cleanOcrTextClient(fallbackContent || '');
-  const leadingCtxTime = /^\s*(\d{1,2})\s*(?::|giờ|gio|g|h)\s*(\d{0,2})\b/i.exec(cleanedCtx);
-  const raw = cleanOcrTextClient(String(rawSlot || '')).trim().replace(/(\d)\s+(?=\d)/g, '$1');
-  const ctx = `${raw} ${cleanedCtx}`.toLowerCase();
-  const isPM = /(buổi\s*chiều|buoi\s*chieu|\bchiều\b|\bchieu\b|buổi\s*tối|buoi\s*toi|\btối\b|\btoi\b|\bpm\b)/i.test(ctx);
-  const isAM = /(buổi\s*sáng|buoi\s*sang|\bsáng\b|\bsang\b|\bam\b)/i.test(ctx);
-
-  const m = /(\d{1,2})\s*(?::|giờ|gio|g|h)\s*(\d{0,2})/i.exec(raw) || leadingCtxTime || /^(\d{1,2})$/.exec(raw);
-  if (!m) return isPM && !isAM ? 14 * 60 : 8 * 60;
-  let hour = parseInt(m[1], 10);
-  const minute = m[2] ? parseInt(m[2], 10) : 0;
-  if (leadingCtxTime && parseInt(leadingCtxTime[1], 10) >= 13 && hour === parseInt(leadingCtxTime[1], 10) % 10) {
-    hour = parseInt(leadingCtxTime[1], 10);
-  }
-  if (Number.isNaN(hour)) return 8 * 60;
-  if (isPM && hour < 12) hour += 12;
-  else if (!isAM && hour >= 1 && hour <= 5) hour += 12;
-  return hour * 60 + (Number.isNaN(minute) ? 0 : minute);
-}
-
-function isMorningSlot(item) {
-  return parseSlotMinutes(item?.time_slot, item?.content) < 12 * 60;
-}
-
-function sanitizeAgencyItemClient(item) {
-  if (!item) return item;
-  let content = cleanOcrTextClient(item.content || '').trim();
-  let timeSlot = cleanOcrTextClient(item.time_slot || '').trim();
-  const mins = parseSlotMinutes(timeSlot, content);
-  if (/^[1-5]\s*(?::|giờ|g|h)/i.test(timeSlot) && mins >= 13 * 60) {
-    const h = String(Math.floor(mins / 60)).padStart(2, '0');
-    const m = String(mins % 60).padStart(2, '0');
-    timeSlot = `${h} giờ ${m}`;
-  }
-  content = content.replace(/^\d{1,2}\s*(?::|giờ|g|h)\s*\d{0,2}\s*[-–:]?\s*/i, '').trim();
-  return {
-    ...item,
-    time_slot: timeSlot,
-    content,
-    executor: cleanOcrTextClient(item.executor || ''),
-    attendees: cleanOcrTextClient(item.attendees || ''),
-    location: cleanOcrTextClient(item.location || ''),
-  };
-}
-
-/**
- * Xác định chính xác Thứ trong tuần cho một hoạt động của Ban Xây dựng Đảng:
- * 1. Ưu tiên tuyệt đối suy từ `item.event_date` (YYYY-MM-DD) để khớp 100% với ngày tháng thực tế.
- * 2. Chuẩn hóa không phân biệt hoa thường cho `item.day_of_week` ("Thứ ba" -> "Thứ Ba", "Thứ tư" -> "Thứ Tư"...).
- * Không bao giờ dồn nhầm Thứ Ba..Chủ Nhật về Thứ Hai!
- */
-function resolveDayOfWeek(item) {
-  const dateStr = String(item?.event_date || '').trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const dt = new Date(y, m - 1, d);
-    if (!Number.isNaN(dt.getTime())) {
-      return ISO_WEEKDAY_VI[dt.getDay()];
-    }
-  }
-  const rawDay = String(item?.day_of_week || '').trim().toLowerCase();
-  if (rawDay.includes('chủ nhật') || rawDay.includes('chu nhat') || rawDay === 'cn') return 'Chủ Nhật';
-  if (rawDay.includes('hai') || rawDay.includes('2')) return 'Thứ Hai';
-  if (rawDay.includes('ba') || rawDay.includes('3')) return 'Thứ Ba';
-  if (rawDay.includes('tư') || rawDay.includes('tu') || rawDay.includes('bốn') || rawDay.includes('4')) return 'Thứ Tư';
-  if (rawDay.includes('năm') || rawDay.includes('nam') || rawDay.includes('5')) return 'Thứ Năm';
-  if (rawDay.includes('sáu') || rawDay.includes('sau') || rawDay.includes('6')) return 'Thứ Sáu';
-  if (rawDay.includes('bảy') || rawDay.includes('bay') || rawDay.includes('7')) return 'Thứ Bảy';
-  return 'Thứ Hai';
-}
 
 export default function AgencyAdvisorView({
   weekStart: propWeekStart,
@@ -189,27 +103,29 @@ export default function AgencyAdvisorView({
   const autoWeekCheckedRef = React.useRef(false);
   const [availableWeeks, setAvailableWeeks] = useState([]);
 
-  const weekSet = new Set([
-    THIS_WEEK - 3,
-    THIS_WEEK - 2,
-    THIS_WEEK - 1,
-    THIS_WEEK,
-    THIS_WEEK + 1,
-    selectedWeek,
-    ...availableWeeks.map((w) => Number(w.week_number)).filter((n) => n > 0 && n <= 53),
-  ]);
-  const weekOptions = [...weekSet]
-    .filter((n) => n > 0 && n <= 53)
-    .sort((a, b) => a - b)
-    .map((n) => {
-      const found = availableWeeks.find((w) => Number(w.week_number) === n);
-      const count = found ? Number(found.agency_count || found.event_count || 0) : 0;
-      const countBadge = count > 0 ? ` • ${count} hoạt động` : '';
-      return {
-        num: n,
-        label: `Tuần ${n} (${weekRangeLabel(mondayOfIsoWeek(n, activeYear))}${n === THIS_WEEK ? ' — tuần hiện tại' : ''})${countBadge}`,
-      };
-    });
+  const weekOptions = useMemo(() => {
+    const weekSet = new Set([
+      THIS_WEEK - 3,
+      THIS_WEEK - 2,
+      THIS_WEEK - 1,
+      THIS_WEEK,
+      THIS_WEEK + 1,
+      selectedWeek,
+      ...availableWeeks.map((w) => Number(w.week_number)).filter((n) => n > 0 && n <= 53),
+    ]);
+    return [...weekSet]
+      .filter((n) => n > 0 && n <= 53)
+      .sort((a, b) => a - b)
+      .map((n) => {
+        const found = availableWeeks.find((w) => Number(w.week_number) === n);
+        const count = found ? Number(found.agency_count || found.event_count || 0) : 0;
+        const countBadge = count > 0 ? ` • ${count} hoạt động` : '';
+        return {
+          num: n,
+          label: `Tuần ${n} (${weekRangeLabel(mondayOfIsoWeek(n, activeYear))}${n === THIS_WEEK ? ' — tuần hiện tại' : ''})${countBadge}`,
+        };
+      });
+  }, [selectedWeek, availableWeeks, activeYear]);
 
   const currentRange = weekRangeLabel(mondayOfIsoWeek(selectedWeek, activeYear));
 
@@ -478,7 +394,7 @@ export default function AgencyAdvisorView({
     await loadSchedule(selectedWeek);
   };
 
-  const groupedItems = (() => {
+  const groupedItems = useMemo(() => {
     const grouped = {};
     DAY_ORDER.forEach((d) => { grouped[d] = []; });
     scheduleItems.forEach((item) => {
@@ -495,7 +411,7 @@ export default function AgencyAdvisorView({
       });
     });
     return grouped;
-  })();
+  }, [scheduleItems]);
 
   /**
    * Thực thi di chuyển hoạt động BXDĐ đến vị trí mới (trước/sau một dòng cụ thể hoặc thả vào tiêu đề Thứ / buổi).
@@ -2178,9 +2094,17 @@ th { background:#F2F2F2; font-weight:bold; text-align:center; }
         </div>
       )}
 
-      <GoogleDriveModal isOpen={showDriveModal} onClose={() => setShowDriveModal(false)} selectedWeek={selectedWeek} />
-      <DeadlineMatrixModal isOpen={showDeadlineModal} onClose={() => setShowDeadlineModal(false)} selectedWeek={selectedWeek} />
-      <WorkloadAnalyticsModal isOpen={showAnalyticsModal} onClose={() => setShowAnalyticsModal(false)} selectedWeek={selectedWeek} />
+      <Suspense fallback={null}>
+        {showDriveModal && (
+          <GoogleDriveModal isOpen={showDriveModal} onClose={() => setShowDriveModal(false)} selectedWeek={selectedWeek} />
+        )}
+        {showDeadlineModal && (
+          <DeadlineMatrixModal isOpen={showDeadlineModal} onClose={() => setShowDeadlineModal(false)} selectedWeek={selectedWeek} />
+        )}
+        {showAnalyticsModal && (
+          <WorkloadAnalyticsModal isOpen={showAnalyticsModal} onClose={() => setShowAnalyticsModal(false)} selectedWeek={selectedWeek} />
+        )}
+      </Suspense>
     </div>
   );
 }

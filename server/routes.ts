@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { getState, bootstrapAuth, mutate, newId, persist, recordAudit, storeFileLocation, extractLeaders, DATA_DIR, eventsBetween, isBooked, compareEventOrder, rememberLesson, rememberPublication, rememberWebhookDelivery, pruneSessions, findUserByName, normalizeTask, normalizeTasks, newShareToken, noteShareAccess, replaceState, SCHEMA_VERSION, addEventComment, addEventVersion, ensureIcsToken, rotateIcsToken, normalizeOrgProfile, cloudStatus, applyCloudSnapshot, flushCloudPush, bootstrapCloud } from './store.ts';
+import { getState, getStoreRevision, bootstrapAuth, mutate, newId, persist, recordAudit, storeFileLocation, extractLeaders, DATA_DIR, eventsBetween, isBooked, compareEventOrder, rememberLesson, rememberPublication, rememberWebhookDelivery, pruneSessions, findUserByName, normalizeTask, normalizeTasks, newShareToken, noteShareAccess, replaceState, SCHEMA_VERSION, addEventComment, addEventVersion, ensureIcsToken, rotateIcsToken, normalizeOrgProfile, cloudStatus, applyCloudSnapshot, flushCloudPush, bootstrapCloud } from './store.ts';
 import { fetchRemote, cloudConfig } from './services/cloud_store.ts';
 import {
   sheetStatus,
@@ -470,6 +470,9 @@ function noteRateHit(key: string, rule: RateRule, now = Date.now()): void {
 
 /** Gắn phiên (từ cookie hoặc X-Session-Token header) rồi chốt quyền. Chạy trước mọi route. */
 router.use(async (req, res, next) => {
+  const routePath = req.path;
+  if (isAppShellRequest(req.method, routePath)) return next();
+
   const s = getState();
   const cookies = parseCookies(req.headers.cookie);
   const headerToken =
@@ -489,9 +492,7 @@ router.use(async (req, res, next) => {
   if (!SAFE_METHODS.has(req.method) && !sameOrigin(req)) {
     return res.status(403).json({ error: 'Yêu cầu bị chặn vì Origin không khớp máy chủ.', code: 'CSRF_BLOCKED' });
   }
-  const routePath = req.path;
   if (isPublicRoute(routePath) || isSelfServiceRoute(routePath)) return next();
-  if (isAppShellRequest(req.method, routePath)) return next();
   const ctx = authOf(req);
   if (!ctx) {
     return res.status(401).json({ error: 'Cần đăng nhập để xem dữ liệu lịch', code: 'AUTH_REQUIRED' });
@@ -1387,7 +1388,17 @@ function sourceSummary(source: any) {
   return { ...rest, chars: (raw_text || '').length };
 }
 
+let cachedWeeksRevision = -1;
+let cachedWeeksResult: {
+  available_weeks: Array<{ week_start: string; week_end: string; week_number: number; year: number; event_count: number; agency_count: number }>;
+  latest_active_week: string | null;
+} | null = null;
+
 function computeAvailableWeeks(s: ReturnType<typeof getState>) {
+  const rev = getStoreRevision();
+  if (cachedWeeksResult && cachedWeeksRevision === rev) {
+    return cachedWeeksResult;
+  }
   const map = new Map<string, { week_start: string; week_end: string; week_number: number; year: number; event_count: number; agency_count: number }>();
   for (const ev of s.events) {
     if (ev.status === 'REJECTED' || !/^\d{4}-\d{2}-\d{2}$/.test(ev.event_date)) continue;
@@ -1421,7 +1432,9 @@ function computeAvailableWeeks(s: ReturnType<typeof getState>) {
   }
   const available_weeks = [...map.values()].sort((a, b) => b.week_start.localeCompare(a.week_start));
   const latest_active_week = available_weeks[0]?.week_start || null;
-  return { available_weeks, latest_active_week };
+  cachedWeeksRevision = rev;
+  cachedWeeksResult = { available_weeks, latest_active_week };
+  return cachedWeeksResult;
 }
 
 router.get('/state', (req, res) => {

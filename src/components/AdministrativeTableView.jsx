@@ -4,6 +4,7 @@ import {
   AlertCircle, Search, Filter, Printer, Download, Plus, Eye, Edit3, Trash2,
   ChevronDown, Layers, Share2, Sparkles, Building2, BookOpen, GripVertical, ArrowUp, ArrowDown
 } from 'lucide-react';
+import { sortDayEvents, isMorningEvent } from '../utils/vietnameseOcrCleanup';
 
 function formatTimeSlot(time, endTime) {
   if (!time) return '';
@@ -20,37 +21,6 @@ function formatTimeSlot(time, endTime) {
     t += ` – ${end}`;
   }
   return t;
-}
-
-function parseEventMinutes(ev) {
-  const rawTime = String(ev?.start_time || ev?.time_slot || '').trim().replace(/(\d)\s+(?=\d)/g, '$1');
-  const ctx = `${rawTime} ${ev?.title || ''} ${ev?.content || ''}`.toLowerCase();
-  const isPM = /(buổi\s*chiều|buoi\s*chieu|\bchiều\b|\bchieu\b|buổi\s*tối|buoi\s*toi|\btối\b|\btoi\b|\bpm\b)/i.test(ctx);
-  const isAM = /(buổi\s*sáng|buoi\s*sang|\bsáng\b|\bsang\b|\bam\b)/i.test(ctx);
-
-  const m = /(\d{1,2})\s*(?::|giờ|gio|g|h)\s*(\d{0,2})/i.exec(rawTime) || /^(\d{1,2})$/.exec(rawTime);
-  if (!m) return isPM && !isAM ? 14 * 60 : 8 * 60;
-  let hour = parseInt(m[1], 10);
-  const minute = m[2] ? parseInt(m[2], 10) : 0;
-  if (Number.isNaN(hour)) return 8 * 60;
-  if (isPM && hour < 12) hour += 12;
-  else if (!isAM && hour >= 1 && hour <= 5) hour += 12;
-  return hour * 60 + (Number.isNaN(minute) ? 0 : minute);
-}
-
-function sortDayEvents(events = []) {
-  return [...events].sort((a, b) => {
-    const hasSortA = typeof a.sort_order === 'number' && !Number.isNaN(a.sort_order);
-    const hasSortB = typeof b.sort_order === 'number' && !Number.isNaN(b.sort_order);
-    if (hasSortA && hasSortB && a.sort_order !== b.sort_order) {
-      return a.sort_order - b.sort_order;
-    }
-    return parseEventMinutes(a) - parseEventMinutes(b);
-  });
-}
-
-function isMorningEvent(ev) {
-  return parseEventMinutes(ev) < 12 * 60;
 }
 
 export default function AdministrativeTableView({
