@@ -15,7 +15,7 @@ const labelStyle = { display: 'block', fontSize: '11px', fontWeight: '700', colo
  * - đăng nhập thường.
  */
 export default function LoginView({ needsSetup = false, onAuthenticated, google = null }) {
-  const [mode, setMode] = useState(needsSetup ? 'setup' : 'login');
+  const [mode, setMode] = useState('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -52,30 +52,8 @@ export default function LoginView({ needsSetup = false, onAuthenticated, google 
     }, () => cancelled).catch((err) => {
       if (!cancelled) setError(err.message || 'Không tải được thành phần đăng nhập Google');
     });
-    if (googleEnabled || !needsSetup) return (
-    <main className="login-page">
-      <section className="login-intro">
-        <span className="login-eyebrow">TUYÊN GIÁO SỐ · LỊCH CÔNG TÁC AI</span>
-        <h1>Lịch rõ ràng.<br />Điều hành hiệu quả.</h1>
-        <p>Tập trung lịch công tác, phối hợp cơ quan và chuẩn bị nội dung trong một không gian làm việc.</p>
-        <div className="login-features"><span>01 · Lập lịch tập trung</span><span>02 · Phối hợp và phê duyệt</span><span>03 · Xuất bản lịch công tác</span></div>
-      </section>
-      <section className="login-card" aria-labelledby="login-title">
-        <div className="login-icon"><ShieldCheck size={28} /></div>
-        <h2 id="login-title">Chào mừng trở lại</h2>
-        <p>Đăng nhập bằng Gmail hoặc tài khoản Google Workspace của bạn để tiếp tục.</p>
-        {googleEnabled ? <>
-          <div ref={googleSlot} className="login-google" aria-busy={googleBusy} />
-          {googleBusy && <p role="status">Đang đăng nhập…</p>}
-          {error && <div className="login-error" role="alert">{error}</div>}
-          <div className="login-note">Tài khoản mới được cấp quyền theo cấu hình của cơ quan. Liên hệ quản trị viên nếu bạn cần quyền biên tập lịch.</div>
-        </> : <div className="login-error" role="status">Đăng nhập Google chưa được cấu hình. Vui lòng liên hệ quản trị viên để kích hoạt.</div>}
-        <footer>Không gian làm việc dành cho cơ quan và đơn vị</footer>
-      </section>
-    </main>
-  );
 
-  return () => {
+    return () => {
       cancelled = true;
       if (googleSlot.current) googleSlot.current.innerHTML = '';
     };
@@ -151,7 +129,7 @@ export default function LoginView({ needsSetup = false, onAuthenticated, google 
               style={inputStyle}
               value={username}
               onChange={(e) => setUsername(e.target.value.toLowerCase())}
-              placeholder="vanphong"
+              placeholder="admin"
               autoComplete="username"
               autoFocus
             />
@@ -168,7 +146,7 @@ export default function LoginView({ needsSetup = false, onAuthenticated, google 
               style={inputStyle}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Tối thiểu 10 ký tự, có chữ và số"
+              placeholder={isSetup ? 'Tối thiểu 10 ký tự, có chữ và số' : 'Nhập mật khẩu'}
               autoComplete={isSetup ? 'new-password' : 'current-password'}
             />
           </div>
