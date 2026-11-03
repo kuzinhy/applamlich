@@ -1,0 +1,360 @@
+@import "tailwindcss";
+
+:root {
+  /* Aquamorphic UI 2.0 + Royal SaaS Dashboard Tokens (Inspired by Reference Layouts 1–5) */
+  --background: #EEF3FB;
+  --surface: #FFFFFF;
+  --surface-soft: #F6F9FF;
+
+  --heading: #081D61;
+  --heading-secondary: #052189;
+
+  --text-primary: #243B63;
+  --text-secondary: #64748B;
+  --text-muted: #94A3B8;
+
+  --primary: #2563EB;
+  --primary-royal: #1E5EFF;
+  --primary-hover: #052189;
+  --accent: #3B82F6;
+
+  --success: #16A34A;
+  --warning: #D97706;
+  --danger: #DC2626;
+
+  --radius-lg: 24px;
+  --radius-md: 18px;
+  --radius-button: 14px;
+
+  --shadow-card:
+    0 12px 28px -6px rgba(30, 64, 140, 0.07),
+    0 4px 12px -4px rgba(30, 64, 140, 0.04);
+
+  --shadow-button:
+    0 6px 16px rgba(37, 99, 235, 0.28);
+
+  --spacing-unit: 8px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Be Vietnam Pro', 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--background);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--heading);
+  letter-spacing: -0.02em;
+}
+
+/* Tabular numbers for KPI metrics, dates, times, and counters */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Smooth micro-interactions */
+button, a, input, select, textarea {
+  font-family: inherit;
+  transition: all 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Aquamorphic Card Utility */
+.aqua-card {
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+
+.aqua-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 18px 34px -6px rgba(30, 64, 140, 0.12),
+    0 8px 14px -6px rgba(30, 64, 140, 0.06);
+}
+
+.aqua-btn-primary {
+  background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+  color: #FFFFFF;
+  border-radius: var(--radius-button);
+  box-shadow: var(--shadow-button);
+}
+
+.aqua-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%);
+}
+
+/* Vibrant Gradient KPI Cards (Reference Images 1 & 2) */
+.kpi-grad-emerald {
+  background: linear-gradient(135deg, #4ADE80 0%, #16A34A 100%);
+  box-shadow: 0 12px 24px -6px rgba(22, 163, 74, 0.32);
+}
+
+.kpi-grad-indigo {
+  background: linear-gradient(135deg, #818CF8 0%, #4F46E5 100%);
+  box-shadow: 0 12px 24px -6px rgba(79, 70, 229, 0.32);
+}
+
+.kpi-grad-rose {
+  background: linear-gradient(135deg, #F472B6 0%, #E11D48 100%);
+  box-shadow: 0 12px 24px -6px rgba(225, 29, 72, 0.30);
+}
+
+.kpi-grad-amber {
+  background: linear-gradient(135deg, #FBBF24 0%, #EA580C 100%);
+  box-shadow: 0 12px 24px -6px rgba(234, 88, 12, 0.30);
+}
+
+/* Quick Access Squircle Tile (Reference Image 3) */
+.quick-tile {
+  background: #FFFFFF;
+  border: 1px solid #E8EFFC;
+  border-radius: 18px;
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px -4px rgba(30, 64, 140, 0.05);
+  transition: all 0.18s ease;
+}
+
+.quick-tile:hover {
+  transform: translateY(-3px);
+  border-color: #BFDBFE;
+  box-shadow: 0 12px 24px -6px rgba(37, 99, 235, 0.14);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Print Document Styles */
+.doc-print {
+  font-family: 'Times New Roman', Times, serif;
+  color: #000000;
+}
+
+.doc-print .doc-field {
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0 -2px;
+  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+}
+.doc-print .doc-field:hover,
+.doc-print .doc-field:focus-visible {
+  background: #FEF3C7;
+  box-shadow: 0 0 0 1px #F59E0B;
+  outline: none;
+}
+
+.app-recovery {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: var(--background);
+  color: var(--heading);
+  text-align: center;
+}
+.app-recovery h1 {
+  font-size: 20px;
+  font-weight: 800;
+}
+.app-recovery p {
+  max-width: 520px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.app-recovery button {
+  border: none;
+  border-radius: var(--radius-button);
+  background: var(--primary);
+  color: #FFFFFF;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-button);
+}
+
+/* App Shell Layout */
+.tg-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--background);
+}
+
+.tg-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tg-main {
+  flex: 1;
+  padding: 22px 26px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.tg-workspace {
+  display: flex;
+  gap: 20px;
+  flex: 1;
+  min-height: 540px;
+}
+
+.tg-ai-panel {
+  width: 340px;
+  flex-shrink: 0;
+}
+
+.tg-sidebar-backdrop {
+  display: none;
+}
+
+.tg-menu-btn {
+  display: none;
+}
+
+@media (max-width: 1180px) {
+  .tg-workspace {
+    flex-direction: column;
+  }
+  .tg-ai-panel {
+    width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .tg-main {
+    padding: 14px;
+  }
+  .tg-menu-btn {
+    display: inline-flex;
+  }
+  .tg-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1200;
+    transform: translateX(-104%);
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: 0 20px 45px rgba(8, 29, 97, 0.25);
+  }
+  .tg-sidebar.is-open {
+    transform: translateX(0);
+  }
+  .tg-sidebar-backdrop.is-open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1190;
+    background: rgba(8, 29, 97, 0.42);
+    backdrop-filter: blur(2px);
+  }
+  .tg-topbar {
+    height: auto !important;
+    min-height: 64px;
+    padding: 10px 14px !important;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .tg-topbar-search {
+    order: 3;
+    width: 100% !important;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 12mm 14mm;
+  }
+  body {
+    background: #FFFFFF !important;
+  }
+  .tg-sidebar,
+  .tg-sidebar-backdrop,
+  .tg-topbar,
+  .tg-commandbar,
+  .tg-ai-panel,
+  .no-print {
+    display: none !important;
+  }
+  .tg-shell,
+  .tg-content,
+  .tg-main {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    background: #FFFFFF !important;
+  }
+  .tg-zoom {
+    zoom: 1 !important;
+  }
+  .doc-print {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .doc-print .doc-field:hover {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+}

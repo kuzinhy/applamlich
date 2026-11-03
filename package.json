@@ -1,0 +1,64 @@
+{
+  "name": "applamlich-agency-advisor",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx server.ts",
+    "start": "node --env-file-if-exists=.env --import tsx server.ts",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "test": "node --import tsx --test \"server/tests/*.test.ts\"",
+    "vercel-build": "vite build && node tools/build-server.mjs"
+  },
+  "dependencies": {
+    "@google/genai": "^2.31.0",
+    "@napi-rs/canvas": "^0.1.100",
+    "@tanstack/react-query": "^5.105.2",
+    "@types/jsonwebtoken": "^9.0.10",
+    "canvas-confetti": "^1.9.4",
+    "docx": "^9.15.0",
+    "exceljs": "^4.4.0",
+    "express": "^5.3.0",
+    "firebase": "^13.1.0",
+    "firebase-admin": "^14.5.0",
+    "framer-motion": "^14.9.0",
+    "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^0.469.0",
+    "nodemailer": "^10.2.1",
+    "pdfjs-dist": "^4.10.38",
+    "pdfkit": "^0.16.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.18.5",
+    "tesseract.js": "^5.1.1",
+    "web-push": "^3.6.7",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.2",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.6.2",
+    "esbuild": "^0.28.2",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.6",
+    "uuid": "^11.1.1"
+  }
+}
