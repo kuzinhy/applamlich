@@ -687,7 +687,6 @@ router.get('/auth/status', (req, res) => {
 });
 
 router.post('/auth/login', async (req, res) => {
-  if (googleLoginConfig().enabled) return res.status(403).json({ error: 'Hãy đăng nhập bằng tài khoản Google.', code: 'GOOGLE_REQUIRED' });
   try {
     const ip = clientIpOf(req);
     const username = normalizeUsername(req.body?.username);
@@ -881,7 +880,6 @@ router.put('/auth/me/drive', (req, res) => {
 });
 
 router.post('/auth/setup', (req, res) => {
-  if (googleLoginConfig().enabled) return res.status(403).json({ error: 'Hãy đăng nhập bằng tài khoản Google.', code: 'GOOGLE_REQUIRED' });
   const s = getState();
   if (s.users.length) {
     return res.status(409).json({ error: 'Hệ thống đã có tài khoản. Hãy liên hệ người quản trị để được cấp quyền.' });
