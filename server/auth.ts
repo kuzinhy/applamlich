@@ -173,7 +173,10 @@ function signSessionPayload(payloadB64: string): string {
   return crypto.createHmac('sha256', SESSION_SECRET).update(payloadB64).digest('base64url');
 }
 
-function decodeSignedSession(sessionId: string, now: Date): { session: SessionRecord; username?: string } | null {
+function decodeSignedSession(
+  sessionId: string,
+  now: Date,
+): { session: SessionRecord; username?: string; displayName?: string } | null {
   if (revokedSessionIds.has(sessionId)) return null;
   const parts = String(sessionId || '').split('.');
   if (parts.length !== 3) return null;
@@ -196,7 +199,86 @@ function decodeSignedSession(sessionId: string, now: Date): { session: SessionRe
       user_agent: String(parsed.ua || ''),
       ip: String(parsed.ip || ''),
     };
-    return { session, username: typeof parsed.un === 'string' ? parsed.un : undefined };
+    return {
+      session,
+      username: typeof parsed.un === 'string' ? parsed.un : undefined,
+      displayName: typeof parsed.dn === 'string' ? parsed.dn : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Khôi phục thông tin phiên đã ký HMAC khi request rơi vào một serverless instance mới
+ * chưa có tài khoản động trong bộ nhớ (nhưng chữ ký HMAC của máy chủ hoàn toàn hợp lệ).
+ */
+export function recoverSignedSession(
+  sessionId: string | undefined,
+  now = new Date(),
+): { session: SessionRecord; user_id: string; username: string; display_name: string; role: UserRole } | null {
+  if (!sessionId) return null;
+  const decoded = decodeSignedSession(sessionId, now);
+  if (!decoded || isSessionExpired(decoded.session, now) || !decoded.username) return null;
+  return {
+    session: decoded.session,
+    user_id: decoded.session.user_id,
+    username: decoded.username,
+    display_name: decoded.displayName || decoded.username,
+    role: decoded.session.role,
+  };
+}
+
+/**
+ * Tạo gói chứng thực tài khoản ký HMAC (Account Pass Token) để khi Quản trị viên tạo tài khoản
+ * cho cán bộ trên Vercel Serverless, người nhận có thể mở link/đăng nhập trên bất kỳ instance nào.
+ */
+export function createAccountPassToken(user: UserRecord): string {
+  const payloadB64 = Buffer.from(
+    JSON.stringify({
+      t: 'acct_v1',
+      id: user.id,
+      un: user.username,
+      dn: user.display_name,
+      r: user.role,
+      ph: user.password_hash,
+      ca: user.created_at,
+    }),
+    'utf8',
+  ).toString('base64url');
+  const sig = signSessionPayload(payloadB64);
+  return `${payloadB64}.${sig}`;
+}
+
+export function verifyAccountPassToken(token: string | undefined): {
+  id: string;
+  username: string;
+  display_name: string;
+  role: UserRole;
+  password_hash: string;
+  created_at: string;
+} | null {
+  const parts = String(token || '').trim().split('.');
+  if (parts.length !== 2) return null;
+  const [payloadB64, sig] = parts;
+  if (!payloadB64 || !sig) return null;
+  const expectedSig = signSessionPayload(payloadB64);
+  const a = Buffer.from(sig, 'utf8');
+  const b = Buffer.from(expectedSig, 'utf8');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    if (!parsed || parsed.t !== 'acct_v1' || typeof parsed.un !== 'string' || typeof parsed.ph !== 'string') {
+      return null;
+    }
+    return {
+      id: String(parsed.id || `u_${parsed.un}`),
+      username: normalizeUsername(parsed.un),
+      display_name: String(parsed.dn || parsed.un),
+      role: isUserRole(parsed.r) ? parsed.r : 'viewer',
+      password_hash: String(parsed.ph),
+      created_at: String(parsed.ca || new Date().toISOString()),
+    };
   } catch {
     return null;
   }
@@ -219,7 +301,15 @@ export function createSession(
   const ua = String(meta.userAgent ?? '').slice(0, 200);
   const ip = String(meta.ip ?? '').slice(0, 60);
   const payloadB64 = Buffer.from(
-    JSON.stringify({ n: nonce, u: user.id, un: user.username, r: user.role, c: createdAt, e: expiresAt }),
+    JSON.stringify({
+      n: nonce,
+      u: user.id,
+      un: user.username,
+      dn: user.display_name,
+      r: user.role,
+      c: createdAt,
+      e: expiresAt,
+    }),
     'utf8',
   ).toString('base64url');
   const sig = signSessionPayload(payloadB64);

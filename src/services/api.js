@@ -12,6 +12,7 @@ class ApiError extends Error {
 }
 
 const SESSION_TOKEN_KEY = 'tg_session_token';
+const ACCOUNT_TOKENS_KEY = 'tg_account_tokens';
 
 function getSessionToken() {
   try {
@@ -25,6 +26,31 @@ function setSessionToken(token) {
   try {
     if (token) window.localStorage.setItem(SESSION_TOKEN_KEY, String(token));
     else window.localStorage.removeItem(SESSION_TOKEN_KEY);
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function getAccountToken(username) {
+  if (!username) return '';
+  try {
+    const raw = window.localStorage.getItem(ACCOUNT_TOKENS_KEY);
+    if (!raw) return '';
+    const map = JSON.parse(raw);
+    return map[String(username).trim().toLowerCase()] || '';
+  } catch {
+    return '';
+  }
+}
+
+export function setAccountToken(username, token) {
+  if (!username || !token) return;
+  try {
+    const key = String(username).trim().toLowerCase();
+    const raw = window.localStorage.getItem(ACCOUNT_TOKENS_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    map[key] = String(token);
+    window.localStorage.setItem(ACCOUNT_TOKENS_KEY, JSON.stringify(map));
   } catch {
     // ignore storage errors
   }
@@ -58,6 +84,9 @@ async function request(path, { method = 'GET', body, query } = {}) {
   }
   if (res.ok && data && typeof data.session_token === 'string' && data.session_token) {
     setSessionToken(data.session_token);
+  }
+  if (res.ok && data && data.user?.username && (data.account_token || data.invite_token)) {
+    setAccountToken(data.user.username, data.account_token || data.invite_token);
   }
   if (res.ok && (path === '/auth/logout' || (path === '/auth/status' && !data.authenticated))) {
     setSessionToken('');
@@ -151,7 +180,27 @@ export const api = {
   // ---------------- Đăng nhập & tài khoản ----------------
   getAuthStatus: () => request('/auth/status'),
 
-  login: (username, password) => request('/auth/login', { method: 'POST', body: { username, password } }),
+  login: (username, password, accountToken = '') =>
+    request('/auth/login', {
+      method: 'POST',
+      body: {
+        username,
+        password,
+        account_token: accountToken || getAccountToken(username) || undefined,
+      },
+    }),
+
+  /** Nhận thông tin bàn giao tài khoản từ liên kết ?invite=... (tự nạp user trên mọi serverless instance). */
+  claimInvite: async (inviteToken) => {
+    const res = await request('/auth/claim-invite', {
+      method: 'POST',
+      body: { invite_token: inviteToken },
+    });
+    if (res?.user?.username && inviteToken) {
+      setAccountToken(res.user.username, inviteToken);
+    }
+    return res;
+  },
 
   /** Nộp ID token do Google Identity Services cấp; server tự kiểm tra chữ ký. */
   loginWithGoogle: (credential) => request('/auth/google', { method: 'POST', body: { credential } }),
@@ -161,6 +210,12 @@ export const api = {
 
   /** Tạo tài khoản quản trị đầu tiên; code là mã 8 ký tự in ra console của máy chủ. */
   setupAccount: (payload) => request('/auth/setup', { method: 'POST', body: payload }),
+
+  /** Đọc cấu hình bảo mật/khôi phục từ .env (không chứa khoá bí mật) cho màn hình Quên mật khẩu. */
+  getRecoveryInfo: () => request('/auth/recovery-info'),
+
+  /** Khôi phục tài khoản mặc định hoặc đặt lại mật khẩu bằng ADMIN_RESET_CODE / setup_code. */
+  resetAccount: (payload) => request('/auth/reset', { method: 'POST', body: payload }),
 
   logout: () => request('/auth/logout', { method: 'POST' }),
 

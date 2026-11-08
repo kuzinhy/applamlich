@@ -68,6 +68,7 @@ import {
   checkLoginThrottle,
   clearedSessionCookie,
   clientIp,
+  createAccountPassToken,
   createSession,
   findActiveSession,
   hashPassword,
@@ -81,11 +82,14 @@ import {
   parseCookies,
   passwordIssues,
   publicUser,
+  recoverSignedSession,
+  resetLoginThrottle,
   revokeSessionToken,
   serializeSessionCookie,
   sessionTtlDays,
   setupCodeMatches,
   usernameIssues,
+  verifyAccountPassToken,
   verifyLoginAttempt,
   verifyPassword,
   type Permission,
@@ -271,7 +275,7 @@ function requireAuthOf(req: Request): AuthContext | null {
 }
 
 /** Không cần phiên: màn hình đăng nhập, thăm dò tình trạng và trang lịch đã chia sẻ công khai. */
-const PUBLIC_ROUTES = [/^\/health$/, /^\/auth\/(status|login|setup|google)$/, /^\/public\/(week|kiosk)\//, /^\/ics\/feed\//, /^\/config\/firebase$/];
+const PUBLIC_ROUTES = [/^\/health$/, /^\/auth\/(status|login|setup|google|recovery-info|reset|claim-invite)$/, /^\/public\/(week|kiosk)\//, /^\/ics\/feed\//, /^\/config\/firebase$/];
 /** Bất kỳ người nào đã đăng nhập cũng dùng được, không xét vai trò. */
 const SELF_SERVICE_ROUTES = [/^\/auth\/(me|logout|password|sessions)(\/|$)/];
 
@@ -483,7 +487,34 @@ router.use(async (req, res, next) => {
       ? req.headers['authorization'].slice(7).trim()
       : '');
   const sessionId = cookies[SESSION_COOKIE] || headerToken;
-  const found = findActiveSession(s.users, s.sessions, sessionId);
+  let found = findActiveSession(s.users, s.sessions, sessionId);
+  if (!found && sessionId) {
+    const recovered = recoverSignedSession(sessionId);
+    if (recovered) {
+      const existing = s.users.find((u) => u.id === recovered.user_id || u.username === recovered.username);
+      if (!existing) {
+        const hydrated: UserRecord = {
+          id: recovered.user_id,
+          username: recovered.username,
+          display_name: recovered.display_name,
+          role: recovered.role,
+          password_hash: '',
+          is_active: true,
+          created_at: recovered.session.created_at,
+          last_login_at: recovered.session.created_at,
+          ...newIdentityFields(),
+        };
+        mutate((state) => {
+          if (!state.users.some((u) => u.id === hydrated.id || u.username === hydrated.username)) {
+            state.users.push(hydrated);
+          }
+        });
+        found = { session: recovered.session, user: hydrated };
+      } else if (existing.is_active) {
+        found = { session: recovered.session, user: existing };
+      }
+    }
+  }
   if (found) {
     (req as unknown as { auth?: AuthContext }).auth = { user: found.user, session: found.session, ip: clientIpOf(req) };
     touchSession(found.session);
@@ -650,28 +681,194 @@ function newIdentityFields(): Pick<UserRecord, 'auth_provider' | 'email' | 'goog
 }
 
 const DEFAULT_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD || 'admin';
-const DEFAULT_ADMIN_HASH = hashPassword(DEFAULT_ADMIN_PASSWORD);
+const DEFAULT_EDITOR_PASSWORD = process.env.DEFAULT_EDITOR_PASSWORD || 'bientap';
+const DEFAULT_VIEWER_PASSWORD = process.env.DEFAULT_VIEWER_PASSWORD || 'xemlich';
 
-/** Bảo đảm tài khoản quản trị mặc định (admin/admin) luôn sẵn sàng ngay cả khi khởi tạo từ seed_store.json trên serverless. */
+const DEFAULT_BUILTIN_ACCOUNTS: Array<{
+  id: string;
+  username: string;
+  display_name: string;
+  role: UserRole;
+  password: string;
+  hash: string;
+}> = [
+  {
+    id: 'u_admin',
+    username: 'admin',
+    display_name: 'Quản trị viên',
+    role: 'admin',
+    password: DEFAULT_ADMIN_PASSWORD,
+    hash: hashPassword(DEFAULT_ADMIN_PASSWORD),
+  },
+  {
+    id: 'u_bientap',
+    username: 'bientap',
+    display_name: 'Cán bộ Biên tập lịch',
+    role: 'editor',
+    password: DEFAULT_EDITOR_PASSWORD,
+    hash: hashPassword(DEFAULT_EDITOR_PASSWORD),
+  },
+  {
+    id: 'u_xemlich',
+    username: 'xemlich',
+    display_name: 'Cán bộ Xem lịch',
+    role: 'viewer',
+    password: DEFAULT_VIEWER_PASSWORD,
+    hash: hashPassword(DEFAULT_VIEWER_PASSWORD),
+  },
+];
+
+function parseEnvAppUsers(): Array<{ username: string; password: string; role: UserRole; display_name: string }> {
+  const raw = String(process.env.APP_USERS || '').trim();
+  if (!raw) return [];
+  return raw
+    .split(/[;\n]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [uRaw, pRaw, rRaw, ...nameParts] = entry.split(':');
+      const username = normalizeUsername(uRaw);
+      const password = String(pRaw || '').trim();
+      const roleStr = String(rRaw || 'editor').trim().toLowerCase();
+      const role: UserRole = isUserRole(roleStr) ? roleStr : 'editor';
+      const display_name = nameParts.join(':').trim() || username;
+      return { username, password, role, display_name };
+    })
+    .filter((item) => item.username.length >= 3 && item.password.length >= 3);
+}
+
+/**
+ * Bảo đảm bộ 3 tài khoản phân quyền mặc định (admin, bientap, xemlich) cùng các tài khoản trong APP_USERS (.env)
+ * luôn sẵn sàng trên mọi instance (kể cả Vercel Serverless cold start).
+ */
 function ensureDefaultAdminUser(): void {
   const s = getState();
-  if (s.users.some((u) => u.username === 'admin')) return;
+  const envUsers = parseEnvAppUsers();
+  const missingBuiltins = DEFAULT_BUILTIN_ACCOUNTS.filter(
+    (b) => !s.users.some((u) => u.username === b.username),
+  );
+  const missingEnv = envUsers.filter(
+    (e) => !s.users.some((u) => u.username === e.username),
+  );
+  if (!missingBuiltins.length && !missingEnv.length) return;
   const now = new Date().toISOString();
   mutate((state) => {
-    if (state.users.some((u) => u.username === 'admin')) return;
-    state.users.push({
-      id: 'u_admin',
-      username: 'admin',
-      display_name: 'Quản trị viên',
-      role: 'admin',
-      password_hash: DEFAULT_ADMIN_HASH,
-      is_active: true,
-      created_at: now,
-      last_login_at: null,
-      ...newIdentityFields(),
-    });
+    for (const b of DEFAULT_BUILTIN_ACCOUNTS) {
+      if (state.users.some((u) => u.username === b.username)) continue;
+      state.users.push({
+        id: b.id,
+        username: b.username,
+        display_name: b.display_name,
+        role: b.role,
+        password_hash: b.hash,
+        is_active: true,
+        created_at: now,
+        last_login_at: null,
+        ...newIdentityFields(),
+      });
+    }
+    for (const e of envUsers) {
+      if (state.users.some((u) => u.username === e.username)) continue;
+      state.users.push({
+        id: `u_${e.username}`,
+        username: e.username,
+        display_name: e.display_name,
+        role: e.role,
+        password_hash: hashPassword(e.password),
+        is_active: true,
+        created_at: now,
+        last_login_at: null,
+        ...newIdentityFields(),
+      });
+    }
   });
 }
+
+function hydrateAccountPassToken(token: string | undefined): UserRecord | null {
+  const verified = verifyAccountPassToken(token);
+  if (!verified) return null;
+  let hydrated: UserRecord | null = null;
+  mutate((state) => {
+    const existing = state.users.find((u) => u.username === verified.username);
+    if (existing) {
+      if (!existing.is_active) return;
+      // Chỉ cập nhật hash nếu tài khoản chưa có hash
+      if (!existing.password_hash) existing.password_hash = verified.password_hash;
+      hydrated = existing;
+      return;
+    }
+    const created: UserRecord = {
+      id: verified.id,
+      username: verified.username,
+      display_name: verified.display_name,
+      role: verified.role,
+      password_hash: verified.password_hash,
+      is_active: true,
+      created_at: verified.created_at,
+      last_login_at: null,
+      ...newIdentityFields(),
+    };
+    state.users.push(created);
+    hydrated = created;
+  });
+  return hydrated;
+}
+
+function buildRecoveryInfo() {
+  const s = getState();
+  const google = googleLoginConfig();
+  const adminEmails = String(process.env.GOOGLE_ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean);
+  return {
+    password_min_length: minPasswordLength(),
+    login_max_failures: Math.max(3, Number(process.env.LOGIN_MAX_FAILURES) || 8),
+    login_lockout_minutes: Math.max(1, Number(process.env.LOGIN_LOCKOUT_MINUTES) || 15),
+    session_ttl_days: sessionTtlDays(),
+    cookie_secure: process.env.COOKIE_SECURE || 'auto',
+    trust_proxy: process.env.TRUST_PROXY === '1',
+    google_enabled: google.enabled,
+    google_allowed_domains: google.allowed_domains,
+    google_signup_role: googleSignupRole(),
+    google_admin_configured: adminEmails.length > 0,
+    google_admin_count: adminEmails.length,
+    env_reset_code_configured: Boolean(process.env.ADMIN_RESET_CODE?.trim()),
+    setup_code_available: Boolean(s.auth?.setup_code),
+    default_admin_username: 'admin',
+    custom_default_admin_password: Boolean(
+      process.env.DEFAULT_ADMIN_PASSWORD?.trim() && process.env.DEFAULT_ADMIN_PASSWORD.trim() !== 'admin',
+    ),
+    builtin_accounts: [
+      { username: 'admin', role: 'admin', role_label: 'Quản trị', default_password_hint: process.env.DEFAULT_ADMIN_PASSWORD ? '(theo .env)' : 'admin' },
+      { username: 'bientap', role: 'editor', role_label: 'Biên tập', default_password_hint: process.env.DEFAULT_EDITOR_PASSWORD ? '(theo .env)' : 'bientap' },
+      { username: 'xemlich', role: 'viewer', role_label: 'Chỉ xem', default_password_hint: process.env.DEFAULT_VIEWER_PASSWORD ? '(theo .env)' : 'xemlich' },
+    ],
+    data_dir_configured: Boolean(process.env.APP_DATA_DIR?.trim()),
+    cloud_sync_enabled: cloudStatus().enabled,
+  };
+}
+
+router.get('/auth/recovery-info', (_req, res) => {
+  res.json(buildRecoveryInfo());
+});
+
+router.post('/auth/claim-invite', async (req, res) => {
+  ensureDefaultAdminUser();
+  const token = String(req.body?.invite_token ?? '').trim();
+  const user = hydrateAccountPassToken(token);
+  if (!user) {
+    return res.status(400).json({ error: 'Mã bàn giao tài khoản không hợp lệ hoặc đã hỏng.' });
+  }
+  await flushCloudPush().catch(() => {});
+  return res.json({
+    ok: true,
+    username: user.username,
+    display_name: user.display_name,
+    role: user.role,
+    account_token: token,
+  });
+});
 
 router.get('/auth/status', (req, res) => {
   const s = getState();
@@ -682,6 +879,7 @@ router.get('/auth/status', (req, res) => {
     user: ctx ? publicUser(ctx.user) : null,
     session_ttl_days: sessionTtlDays(),
     google: googleLoginConfig(),
+    recovery: buildRecoveryInfo(),
     session_token: ctx ? ctx.session.id : undefined,
   });
 });
@@ -691,6 +889,7 @@ router.post('/auth/login', async (req, res) => {
     const ip = clientIpOf(req);
     const username = normalizeUsername(req.body?.username);
     const password = String(req.body?.password ?? '');
+    const accountToken = String(req.body?.account_token ?? '').trim();
     const flags = cookieFlags(req);
 
     const throttle = checkLoginThrottle(ip, username, Date.now());
@@ -707,6 +906,9 @@ router.post('/auth/login', async (req, res) => {
     }
 
     ensureDefaultAdminUser();
+    if (accountToken) {
+      hydrateAccountPassToken(accountToken);
+    }
     let state = getState();
     if (!state.users.length) {
       bootstrapAuth();
@@ -714,17 +916,22 @@ router.post('/auth/login', async (req, res) => {
     }
 
     let result = verifyLoginAttempt(state.users, username, password);
-    if (!result.ok && username === 'admin' && password === DEFAULT_ADMIN_PASSWORD) {
-      mutate((s) => {
-        const existing = s.users.find((u) => u.username === 'admin');
-        if (existing) {
-          existing.password_hash = DEFAULT_ADMIN_HASH;
-          existing.is_active = true;
-          existing.role = 'admin';
-        }
-      });
-      state = getState();
-      result = verifyLoginAttempt(state.users, username, password);
+    if (!result.ok) {
+      const builtinMatch = DEFAULT_BUILTIN_ACCOUNTS.find(
+        (b) => b.username === username && b.password === password,
+      );
+      if (builtinMatch) {
+        mutate((s) => {
+          const existing = s.users.find((u) => u.username === builtinMatch.username);
+          if (existing) {
+            existing.password_hash = builtinMatch.hash;
+            existing.is_active = true;
+            existing.role = builtinMatch.role;
+          }
+        });
+        state = getState();
+        result = verifyLoginAttempt(state.users, username, password);
+      }
     }
     if (!result.ok) {
       noteLoginFailure(ip, username, Date.now());
@@ -741,7 +948,12 @@ router.post('/auth/login', async (req, res) => {
       pruneSessions(s);
     });
     issueSessionCookie(res, session, flags);
-    return res.json({ ok: true, user: publicUser(result.user), session_token: session.id });
+    return res.json({
+      ok: true,
+      user: publicUser(result.user),
+      session_token: session.id,
+      account_token: createAccountPassToken(result.user),
+    });
   } catch (err: any) {
     console.error('Lỗi khi xử lý đăng nhập:', err);
     return res.status(500).json({ error: `Lỗi đăng nhập: ${err?.message || 'Không xác định'}` });
@@ -921,6 +1133,108 @@ router.post('/auth/setup', (req, res) => {
   return res.json({ ok: true, user: publicUser(user), session_token: session.id });
 });
 
+router.post('/auth/reset', async (req, res) => {
+  const ip = clientIpOf(req);
+  const action = String(req.body?.action ?? 'reset_with_code');
+  const providedCode = String(req.body?.reset_code ?? '').trim();
+  const envResetCode = String(process.env.ADMIN_RESET_CODE ?? '').trim();
+  const s = getState();
+  const storedSetupCode = String(s.auth?.setup_code || '').trim();
+
+  if (action === 'restore_default_admin') {
+    if (envResetCode && !setupCodeMatches(envResetCode, providedCode)) {
+      noteLoginFailure(ip, 'reset', Date.now());
+      return res.status(403).json({
+        error: 'Máy chủ đang bật ADMIN_RESET_CODE trong .env — cần nhập đúng Mã khôi phục để reset tài khoản.',
+        code: 'BAD_RESET_CODE',
+      });
+    }
+    ensureDefaultAdminUser();
+    mutate((state) => {
+      for (const b of DEFAULT_BUILTIN_ACCOUNTS) {
+        const target = state.users.find((u) => u.username === b.username);
+        if (target) {
+          target.password_hash = hashPassword(b.password);
+          target.is_active = true;
+          target.role = b.role;
+        }
+      }
+    });
+    resetLoginThrottle();
+    recordAudit('reset_default_admin', 'user', 'u_admin', 'Khôi phục bộ tài khoản mặc định (admin, bientap, xemlich) theo cấu hình .env', {
+      username: 'admin',
+      ip,
+    });
+    await flushCloudPush().catch(() => {});
+    return res.json({
+      ok: true,
+      username: 'admin',
+      used_default_password: !process.env.DEFAULT_ADMIN_PASSWORD?.trim() || process.env.DEFAULT_ADMIN_PASSWORD.trim() === 'admin',
+      message: 'Đã mở khóa tạm và khôi phục các tài khoản mặc định (admin / bientap / xemlich) theo cấu hình .env.',
+    });
+  }
+
+  const validEnvCode = envResetCode && setupCodeMatches(envResetCode, providedCode);
+  const validSetupCode = storedSetupCode && setupCodeMatches(storedSetupCode, providedCode);
+  if (!validEnvCode && !validSetupCode) {
+    noteLoginFailure(ip, 'reset', Date.now());
+    return res.status(403).json({
+      error: envResetCode
+        ? 'Mã khôi phục (ADMIN_RESET_CODE trong .env) không đúng.'
+        : 'Mã khởi tạo / khôi phục không đúng hoặc chưa được cấu hình trong .env (ADMIN_RESET_CODE).',
+      code: 'BAD_RESET_CODE',
+    });
+  }
+
+  const username = normalizeUsername(req.body?.username || 'admin');
+  const newPassword = String(req.body?.new_password ?? '');
+  const problems = [
+    ...usernameIssues(username),
+    ...adminPasswordProblems(newPassword),
+  ];
+  if (problems.length) {
+    return res.status(400).json({ error: problems.join('. ') });
+  }
+
+  let targetUser: UserRecord | undefined;
+  mutate((state) => {
+    targetUser = state.users.find((u) => u.username === username);
+    if (targetUser) {
+      targetUser.password_hash = hashPassword(newPassword);
+      targetUser.is_active = true;
+    } else {
+      targetUser = {
+        id: username === 'admin' ? 'u_admin' : newId('u'),
+        username,
+        display_name: username === 'admin' ? 'Quản trị viên' : username,
+        role: 'admin',
+        password_hash: hashPassword(newPassword),
+        is_active: true,
+        created_at: new Date().toISOString(),
+        last_login_at: null,
+        ...newIdentityFields(),
+      };
+      state.users.push(targetUser);
+    }
+    state.sessions = state.sessions.filter((sess) => sess.user_id !== targetUser!.id);
+  });
+
+  resetLoginThrottle();
+  noteLoginSuccess(ip, username);
+  recordAudit('reset_password', 'user', targetUser?.id || username, `Đặt lại mật khẩu tài khoản ${username} qua mã khôi phục`, {
+    username,
+    ip,
+  });
+  await flushCloudPush().catch(() => {});
+
+  return res.json({
+    ok: true,
+    username,
+    account_token: targetUser ? createAccountPassToken(targetUser) : undefined,
+    message: `Đã đặt lại mật khẩu và mở khóa cho tài khoản "${username}". Bạn có thể đăng nhập ngay.`,
+  });
+});
+
 router.post('/auth/logout', async (req, res) => {
   const ctx = authOf(req);
   if (ctx) {
@@ -1005,27 +1319,46 @@ function activeAdminCount(s: ReturnType<typeof getState>): number {
   return s.users.filter((u) => u.role === 'admin' && u.is_active).length;
 }
 
+/** Khi Quản trị viên chủ động tạo/cấp mật khẩu cho đồng nghiệp, cho phép mật khẩu từ 4 ký tự trở lên để dễ bàn giao. */
+function adminPasswordProblems(password: string): string[] {
+  const value = String(password ?? '');
+  const issues: string[] = [];
+  if (value.length < 4) issues.push('Mật khẩu cần tối thiểu 4 ký tự');
+  if (value.length > MAX_PASSWORD_LENGTH) issues.push(`Mật khẩu tối đa ${MAX_PASSWORD_LENGTH} ký tự`);
+  return issues;
+}
+
+function enrichAdminUserView(u: UserRecord, s: ReturnType<typeof getState>) {
+  const builtin = DEFAULT_BUILTIN_ACCOUNTS.find((b) => b.username === u.username);
+  return {
+    ...publicUser(u),
+    sessions: s.sessions.filter((x) => x.user_id === u.id).length,
+    invite_token: u.password_hash ? createAccountPassToken(u) : '',
+    is_builtin: Boolean(builtin),
+    default_password_hint: builtin ? builtin.password : '',
+  };
+}
+
 /** List chỉ kèm hash rút gọn để không lộ salt ra ngoài API. */
-router.get('/users', (req, res) => {
+router.get('/users', (_req, res) => {
+  ensureDefaultAdminUser();
   const s = getState();
+  const cloud = cloudStatus();
   res.json({
-    users: s.users.map((u) => ({
-      ...publicUser(u),
-      sessions: s.sessions.filter((x) => x.user_id === u.id).length,
-    })),
-    admin_only_notice: 'Mật khẩu chỉ được lưu dưới dạng băm scrypt; không ai xem lại được mật khẩu gốc.',
+    users: s.users.map((u) => enrichAdminUserView(u, s)),
+    cloud_enabled: cloud.enabled,
+    admin_only_notice: 'Mật khẩu chỉ được lưu dưới dạng băm scrypt; có thể sao chép Link/Thông tin bàn giao để gửi Zalo cho cán bộ.',
   });
 });
 
-router.post('/users', (req, res) => {
+router.post('/users', async (req, res) => {
   const username = normalizeUsername(req.body?.username);
   const displayName = String(req.body?.display_name ?? '').trim().slice(0, 80);
   const password = String(req.body?.password ?? '');
   const role = req.body?.role;
   if (!isUserRole(role)) return res.status(400).json({ error: 'Vai trò phải là admin, editor hoặc viewer' });
-  const problems = [...usernameIssues(username), ...newPasswordProblems(password, username)];
+  const problems = [...usernameIssues(username), ...adminPasswordProblems(password)];
   if (findUserByName(username)) problems.push('Tên đăng nhập đã tồn tại');
-  if (password.length > MAX_PASSWORD_LENGTH) problems.push(`Mật khẩu tối đa ${MAX_PASSWORD_LENGTH} ký tự`);
   if (problems.length) return res.status(400).json({ error: problems.join('. ') });
 
   const user: UserRecord = {
@@ -1041,10 +1374,11 @@ router.post('/users', (req, res) => {
   };
   mutate((s) => s.users.push(user));
   audit(req, 'create', 'user', user.id, `${username} — ${role}`);
-  return res.status(201).json({ user: publicUser(user) });
+  await flushCloudPush().catch(() => {});
+  return res.status(201).json({ user: enrichAdminUserView(user, getState()) });
 });
 
-router.patch('/users/:id', (req, res) => {
+router.patch('/users/:id', async (req, res) => {
   const s = getState();
   const target = s.users.find((u) => u.id === req.params.id);
   if (!target) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
@@ -1073,7 +1407,7 @@ router.patch('/users/:id', (req, res) => {
   }
   if (typeof nextName === 'string') changes.push(`đổi tên hiển thị`);
   if (typeof nextPassword === 'string' && nextPassword) {
-    const problems = newPasswordProblems(nextPassword, target.username);
+    const problems = adminPasswordProblems(nextPassword);
     if (problems.length) return res.status(400).json({ error: problems.join('. ') });
     changes.push('đặt lại mật khẩu');
   }
@@ -1092,11 +1426,12 @@ router.patch('/users/:id', (req, res) => {
     }
   });
   audit(req, 'update', 'user', target.id, `${target.username}: ${changes.join(', ')}`);
+  await flushCloudPush().catch(() => {});
   const after = getState().users.find((u) => u.id === target.id)!;
-  return res.json({ user: publicUser(after) });
+  return res.json({ user: enrichAdminUserView(after, getState()) });
 });
 
-router.delete('/users/:id', (req, res) => {
+router.delete('/users/:id', async (req, res) => {
   const s = getState();
   const target = s.users.find((u) => u.id === req.params.id);
   if (!target) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
@@ -1110,6 +1445,7 @@ router.delete('/users/:id', (req, res) => {
     state.sessions = state.sessions.filter((x) => x.user_id !== target.id);
   });
   audit(req, 'delete', 'user', target.id, target.username);
+  await flushCloudPush().catch(() => {});
   return res.json({ ok: true });
 });
 
@@ -3509,9 +3845,22 @@ router.post('/agency/analyze-file', async (req, res) => {
   const fileName = String(req.body?.file_name || '').trim();
   const direct = String(req.body?.file_content || '').trim();
   let content = direct;
-  if (!content && req.body?.content_base64) content = (await extractTextAsync(fileName, Buffer.from(String(req.body.content_base64), 'base64'))).text;
-  if (!fileName || content.length < 40) {
-    return res.status(422).json({ error: 'Cần tên tệp và nội dung văn bản (tối thiểu 40 ký tự).' });
+  let readResult: any = null;
+  if (!content && req.body?.content_base64) {
+    try {
+      readResult = await extractTextAsync(fileName, Buffer.from(String(req.body.content_base64), 'base64'));
+      content = readResult.text || '';
+    } catch (err) {
+      return res.status(422).json({ error: `Không đọc được tệp: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  }
+  if (!fileName) {
+    return res.status(422).json({ error: 'Cần có tên tệp.' });
+  }
+  if (!content || content.length < 10) {
+    return res.status(422).json({
+      error: readResult?.error || 'Nội dung tệp quá ngắn hoặc không đọc được chữ. Hãy kiểm tra lại tệp PDF/Word hoặc dán nội dung văn bản thủ công.',
+    });
   }
   const { start: weekStart, end: weekEnd } = weekParam(req);
   const state = getState();

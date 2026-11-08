@@ -156,6 +156,38 @@ export default function HelpView() {
           </a>
         </section>
       </div>
+
+      <section style={{ ...CARD, padding: '16px' }}>
+        <h3 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: 800, color: '#0F2A5F', display: 'flex', gap: '7px', alignItems: 'center' }}>
+          <ShieldCheck size={16} color="#2563EB" /> Quy trình Quên mật khẩu & Reset tài khoản (theo cấu hình <code>.env</code>)
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px', fontSize: '12px', color: '#475569', lineHeight: 1.65 }}>
+          <div style={{ padding: '12px', borderRadius: '10px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '4px' }}>1. Khôi phục trực tiếp tại màn Đăng nhập</div>
+            <div>
+              Tại màn hình đăng nhập, bấm <strong>"Quên mật khẩu / Reset?"</strong> để mở trang khôi phục. Bạn có thể bấm một chạm để khôi phục tài khoản <code>admin</code> về <code>DEFAULT_ADMIN_PASSWORD</code> trong <code>.env</code> (mặc định là <code>admin</code>) và xóa khóa tạm IP.
+            </div>
+          </div>
+          <div style={{ padding: '12px', borderRadius: '10px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '4px' }}>2. Đặt lại bằng mã <code>ADMIN_RESET_CODE</code></div>
+            <div>
+              Khai báo <code>ADMIN_RESET_CODE=...</code> trong tệp <code>.env</code> (hoặc <code>setup_code</code> trong <code>data/app_store.json</code>) để đặt lại mật khẩu mới (tối thiểu <code>PASSWORD_MIN_LENGTH=10</code> ký tự) cho bất kỳ tài khoản nào ngay trên giao diện web.
+            </div>
+          </div>
+          <div style={{ padding: '12px', borderRadius: '10px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '4px' }}>3. Mở khóa khi nhập sai (<code>LOGIN_MAX_FAILURES</code>)</div>
+            <div>
+              Nhập sai liên tiếp quá <code>LOGIN_MAX_FAILURES</code> (mặc định 8 lần) sẽ khóa tạm trong <code>LOGIN_LOCKOUT_MINUTES</code> (mặc định 15 phút). Dùng công cụ khôi phục tại màn hình đăng nhập hoặc khởi động lại server để mở khóa ngay.
+            </div>
+          </div>
+          <div style={{ padding: '12px', borderRadius: '10px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '4px' }}>4. Quyền Admin qua Google (<code>GOOGLE_ADMIN_EMAILS</code>)</div>
+            <div>
+              Khi bật <code>GOOGLE_CLIENT_ID</code>, thêm email của bạn vào biến <code>GOOGLE_ADMIN_EMAILS=ban@gmail.com</code> trong <code>.env</code> (hoặc Vercel Environment Variables) để tự động nhận quyền <code>admin</code> khi đăng nhập bằng Google.
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
