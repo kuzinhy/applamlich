@@ -40,32 +40,28 @@ export default function SidebarV2({
     { id: 'dashboard', label: 'Bàn điều hành', icon: LayoutDashboard },
     { id: 'calendar', label: 'Lịch công tác tuần', icon: Calendar, matchIds: ['calendar', 'table'] },
     {
-      id: 'sources',
-      label: 'Số hóa & AI Bóc tách',
-      icon: Sparkles,
-      badge: proposedCount > 0 ? String(proposedCount) : null,
-      badgeBg: '#EC4899',
-      matchIds: ['sources', 'proposed', 'signals', 'brain', 'assistant'],
-    },
-    {
       id: 'conflicts',
       label: 'Rà soát xung đột',
       icon: AlertTriangle,
       badge: conflictCount > 0 ? String(conflictCount) : null,
       badgeBg: '#F97316',
     },
-    { id: 'advisor', label: 'Tham mưu BXDĐ', icon: Layers },
+    {
+      id: 'advisor',
+      label: 'Tham mưu BXDĐ',
+      icon: Layers,
+      badge: proposedCount > 0 ? String(proposedCount) : null,
+      badgeBg: '#EC4899',
+      matchIds: ['advisor', 'sources', 'proposed', 'signals', 'brain', 'assistant'],
+    },
   ];
 
   const publishingItems = [
-    { id: 'templates', label: 'Biểu mẫu chuẩn A4', icon: FileCheck },
     { id: 'export', label: 'Phát hành & Chia sẻ', icon: Send },
   ];
 
   const systemItems = [
-    ...(can('manage_users') ? [{ id: 'users', label: 'Tài khoản & Phân quyền', icon: Users }] : []),
-    { id: 'settings', label: 'Cấu hình đơn vị', icon: Settings },
-    { id: 'trash', label: 'Thùng rác', icon: Trash2 },
+    { id: 'users', label: 'Tài khoản & Hệ thống', icon: Users, matchIds: ['users', 'settings', 'trash'] },
     { id: 'help', label: 'Hướng dẫn sử dụng', icon: HelpCircle },
   ];
 

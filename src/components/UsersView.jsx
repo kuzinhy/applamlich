@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
   KeyRound, Plus, ShieldCheck, Trash2, UserCog, Users as UsersIcon,
-  Copy, Check, Share2, Sparkles
+  Copy, Check, Share2, Sparkles, Settings as SettingsIcon
 } from 'lucide-react';
 import { api } from '../services/api';
+import SettingsView from './SettingsView';
+import TrashView from './TrashView';
 
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Quản trị — sửa mọi thứ, quản lý tài khoản' },
@@ -36,8 +38,9 @@ const formatStamp = (iso) => {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-/** Trang quản trị tài khoản: chỉ hiện với vai trò admin (nav lọc theo quyền). */
-export default function UsersView({ showToast, currentUserId }) {
+/** Trang quản trị tài khoản & hệ thống (gồm Tài khoản, Cấu hình đơn vị, Thùng rác). */
+export default function UsersView({ showToast, currentUserId, settings, onSaved, can, session, onDataChanged }) {
+  const [activeSubTab, setActiveSubTab] = useState('users'); // 'users' | 'settings' | 'trash'
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -157,22 +160,88 @@ export default function UsersView({ showToast, currentUserId }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <UsersIcon size={17} color="#2563EB" />
-          </div>
-          <div>
-            <div style={{ fontSize: '15px', fontWeight: '800', color: '#0F172A' }}>Tài khoản & bàn giao sử dụng</div>
-            <div style={{ fontSize: '12px', color: '#64748B' }}>
-              {users.length} tài khoản · Hỗ trợ tạo pass riêng & gửi link bàn giao chạy ổn định trên Vercel
-            </div>
-          </div>
-        </div>
-        <button style={tiny('#2563EB')} onClick={() => setCreating((v) => !v)}>
-          <Plus size={13} /> Thêm tài khoản cho đồng nghiệp
+      {/* Sub-tabs header */}
+      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #E2E8F0', paddingBottom: '12px', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('users')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '7px', padding: '8px 14px', borderRadius: '8px',
+            border: activeSubTab === 'users' ? '1px solid #2563EB' : '1px solid #CBD5E1',
+            background: activeSubTab === 'users' ? '#EFF6FF' : '#FFFFFF',
+            color: activeSubTab === 'users' ? '#1D4ED8' : '#334155',
+            fontSize: '13px', fontWeight: '700', cursor: 'pointer'
+          }}
+        >
+          <UsersIcon size={15} /> Tài khoản & Bàn giao
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('settings')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '7px', padding: '8px 14px', borderRadius: '8px',
+            border: activeSubTab === 'settings' ? '1px solid #2563EB' : '1px solid #CBD5E1',
+            background: activeSubTab === 'settings' ? '#EFF6FF' : '#FFFFFF',
+            color: activeSubTab === 'settings' ? '#1D4ED8' : '#334155',
+            fontSize: '13px', fontWeight: '700', cursor: 'pointer'
+          }}
+        >
+          <SettingsIcon size={15} /> Cấu hình đơn vị
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('trash')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '7px', padding: '8px 14px', borderRadius: '8px',
+            border: activeSubTab === 'trash' ? '1px solid #2563EB' : '1px solid #CBD5E1',
+            background: activeSubTab === 'trash' ? '#EFF6FF' : '#FFFFFF',
+            color: activeSubTab === 'trash' ? '#1D4ED8' : '#334155',
+            fontSize: '13px', fontWeight: '700', cursor: 'pointer'
+          }}
+        >
+          <Trash2 size={15} /> Thùng rác
         </button>
       </div>
+
+      {activeSubTab === 'settings' && (
+        <SettingsView
+          settings={settings}
+          onSaved={onSaved}
+          showToast={showToast}
+          can={can}
+          session={session}
+          onDataChanged={onDataChanged}
+        />
+      )}
+
+      {activeSubTab === 'trash' && (
+        <TrashView
+          onToast={showToast}
+          can={can}
+          onDataChanged={onDataChanged}
+        />
+      )}
+
+      {activeSubTab === 'users' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <UsersIcon size={17} color="#2563EB" />
+              </div>
+              <div>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#0F172A' }}>Tài khoản & bàn giao sử dụng</div>
+                <div style={{ fontSize: '12px', color: '#64748B' }}>
+                  {users.length} tài khoản · Hỗ trợ tạo pass riêng & gửi link bàn giao chạy ổn định trên Vercel
+                </div>
+              </div>
+            </div>
+            <button style={tiny('#2563EB')} onClick={() => setCreating((v) => !v)}>
+              <Plus size={13} /> Thêm tài khoản cho đồng nghiệp
+            </button>
+          </div>
 
       {/* Hộp thông tin 3 tài khoản mặc định có sẵn trên mọi máy chủ / Vercel */}
       <div style={{ ...cardStyle, background: 'linear-gradient(135deg, #EFF6FF 0%, #F8FAFC 100%)', borderColor: '#BFDBFE' }}>
@@ -422,6 +491,8 @@ export default function UsersView({ showToast, currentUserId }) {
         • <strong>Cách 2 (Tạo tài khoản riêng cho từng cán bộ):</strong> Bấm <em>"+ Thêm tài khoản cho đồng nghiệp"</em> → đặt tên và mật khẩu → bấm nút <strong>"Bàn giao"</strong> để copy tin nhắn kèm Link định danh gửi qua Zalo. Khi đồng nghiệp mở link đó và nhập mật khẩu, hệ thống trên Vercel tự động nhận diện tài khoản ở mọi phiên làm việc.<br />
         • <strong>Cách 3 (Cấu hình cố định trong Vercel Environment Variables):</strong> Khai báo biến <code>APP_USERS=hoa:matkhau123:editor:Nguyễn Thị Hoa;nam:xem123:viewer:Trần Văn Nam</code> trên Vercel để tạo cố định danh sách tài khoản theo <code>.env</code>.
       </div>
+        </div>
+      )}
     </div>
   );
 }

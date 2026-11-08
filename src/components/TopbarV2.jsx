@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Search, ChevronLeft, ChevronRight, AlertTriangle, Calendar,
-  LogOut, Menu, HelpCircle, Tv, Plus, Sparkles, LayoutDashboard, Table2
+  LogOut, Menu, HelpCircle, Tv, Plus, Sparkles, LayoutDashboard, Table2, Layers
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -21,12 +21,9 @@ const ROUTE_META = {
   brain: { group: 'Xử lý nguồn & AI', title: 'Trợ lý AI & Bộ nhớ thói quen' },
   assistant: { group: 'Xử lý nguồn & AI', title: 'Trợ lý AI điều hành' },
   conflicts: { group: 'Điều hành chính', title: 'Rà soát & Xử lý xung đột lịch' },
-  advisor: { group: 'Điều hành chính', title: 'Tham mưu Ban Xây dựng Đảng' },
-  templates: { group: 'Phát hành & Biểu mẫu', title: 'Biểu mẫu hành chính chuẩn A4' },
+  advisor: { group: 'Điều hành chính', title: 'Tham mưu Ban Xây dựng Đảng & Bóc tách AI' },
   export: { group: 'Phát hành & Biểu mẫu', title: 'Phát hành & Chia sẻ lịch tuần' },
-  users: { group: 'Quản trị hệ thống', title: 'Quản lý tài khoản & Phân quyền' },
-  settings: { group: 'Quản trị hệ thống', title: 'Cấu hình thông tin đơn vị' },
-  trash: { group: 'Quản trị hệ thống', title: 'Thùng rác & Khôi phục dữ liệu' },
+  users: { group: 'Quản trị hệ thống', title: 'Quản lý tài khoản, Cấu hình & Thùng rác' },
   help: { group: 'Quản trị hệ thống', title: 'Hướng dẫn sử dụng & Phím tắt' },
 };
 
@@ -66,7 +63,7 @@ export default function TopbarV2({
   const quickTabs = [
     { id: 'dashboard', label: 'Bàn điều hành', icon: LayoutDashboard },
     { id: 'calendar', label: 'Lịch công tác', icon: Calendar },
-    { id: 'sources', label: 'Kho nguồn & AI', icon: Sparkles },
+    { id: 'advisor', label: 'Tham mưu BXDĐ', icon: Layers },
   ];
 
   return (
@@ -333,89 +330,7 @@ export default function TopbarV2({
           </button>
         )}
 
-        {onFontLevelChange && (
-          <div
-            role="group"
-            aria-label="Cỡ chữ hiển thị"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              background: '#F6F9FF',
-              border: '1px solid #E2E8F0',
-              borderRadius: '999px',
-              padding: '2px',
-            }}
-          >
-            {['A−', 'A', 'A+'].map((label, idx) => {
-              const active = fontLevel === idx;
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => onFontLevelChange(idx)}
-                  style={{
-                    border: 'none',
-                    background: active ? '#FFFFFF' : 'transparent',
-                    color: active ? '#081D61' : '#64748B',
-                    boxShadow: active ? '0 2px 5px rgba(50,75,120,0.08)' : 'none',
-                    fontWeight: 700,
-                    fontSize: '11px',
-                    padding: '4px 8px',
-                    borderRadius: '999px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        )}
 
-        {onOpenHelp && (
-          <button
-            type="button"
-            onClick={onOpenHelp}
-            title="Phím tắt & trợ giúp (?)"
-            style={{
-              border: '1px solid #E2E8F0',
-              background: '#F6F9FF',
-              color: '#243B63',
-              borderRadius: '50%',
-              width: '34px',
-              height: '34px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <HelpCircle size={15} />
-          </button>
-        )}
-
-        <button
-          type="button"
-          onClick={onClickConflicts}
-          title={openConflicts > 0 ? `${openConflicts} xung đột lịch cần xử lý` : 'Không có xung đột lịch'}
-          className="tabular-nums"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: openConflicts > 0 ? '#FEF2F2' : '#F6F9FF',
-            color: openConflicts > 0 ? '#DC2626' : '#64748B',
-            padding: '7px 11px',
-            borderRadius: '999px',
-            fontSize: '12px',
-            fontWeight: '700',
-            border: `1px solid ${openConflicts > 0 ? '#FCA5A5' : '#E2E8F0'}`,
-            cursor: 'pointer',
-          }}
-        >
-          <AlertTriangle size={14} />
-          <span>{openConflicts}</span>
-        </button>
 
         {/* User Profile Pill */}
         <div

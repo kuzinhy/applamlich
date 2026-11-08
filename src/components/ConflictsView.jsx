@@ -37,7 +37,16 @@ export default function ConflictsView({
 
   const open = (conflicts || []).filter((c) => c.status === 'OPEN');
 
+  const checkReadOnly = () => {
+    if (readOnly) {
+      if (showToast) showToast('Tài khoản của bạn (Chỉ xem) không có quyền thay đổi lịch. Vui lòng đăng nhập tài khoản Biên tập viên hoặc Quản trị viên.');
+      return true;
+    }
+    return false;
+  };
+
   const runAutoPlan = async () => {
+    if (checkReadOnly()) return;
     setPlanBusy(true);
     setPlanError('');
     try {
@@ -51,6 +60,7 @@ export default function ConflictsView({
   };
 
   const applyOption = async (item, slot) => {
+    if (checkReadOnly()) return;
     setMovingKey(`${item.conflict_id}|${slot.date}|${slot.start_time}`);
     setPlanError('');
     try {
@@ -70,6 +80,7 @@ export default function ConflictsView({
     .map((p) => ({ conflict_id: p.conflict_id, event_id: p.move_event.id, date: p.options[0].date, start_time: p.options[0].start_time }));
 
   const applyWholePlan = async () => {
+    if (checkReadOnly()) return;
     const moves = planMoves(plan || []);
     if (!moves.length) {
       setPlanError('Kế hoạch hiện không còn nước dời nào để áp dụng.');
@@ -99,6 +110,7 @@ export default function ConflictsView({
    * Vì vậy phải xác nhận lại và nói rõ để cán bộ không tưởng xung đột đã được xếp lại.
    */
   const handleMarkHandled = async (c) => {
+    if (checkReadOnly()) return;
     const ok = window.confirm(
       'Đánh dấu xung đột này là đã tự xử lý?\n\n'
       + 'Hệ thống KHÔNG thay đổi giờ hay thành phần của hai mục lịch — chỉ ghi nhận để tắt cảnh báo.\n'
@@ -114,6 +126,7 @@ export default function ConflictsView({
   };
 
   const handleDelegate = async (c) => {
+    if (checkReadOnly()) return;
     const s = c.suggested_substitute;
     if (!s) return;
     const ok = window.confirm(

@@ -1204,9 +1204,9 @@ export default function App() {
               } />
               <Route path="/export" element={<ExportView weekStart={weekStart} onToast={showToast} can={can} />} />
               <Route path="/templates" element={<TemplatesView weekStart={weekStart} onToast={showToast} />} />
-              <Route path="/users" element={<UsersView showToast={showToast} currentUserId={session.id} />} />
-              <Route path="/settings" element={<SettingsView settings={settings} onSaved={() => loadData()} showToast={showToast} can={can} session={session} onDataChanged={() => loadData()} />} />
-              <Route path="/trash" element={<TrashView onToast={showToast} can={can} onDataChanged={() => loadData()} />} />
+              <Route path="/users" element={<UsersView showToast={showToast} currentUserId={session?.id} settings={settings} onSaved={() => loadData()} can={can} session={session} onDataChanged={() => loadData()} />} />
+              <Route path="/settings" element={<Navigate to="/users" replace />} />
+              <Route path="/trash" element={<Navigate to="/users" replace />} />
               <Route path="/help" element={<HelpView />} />
               <Route path="*" element={<Navigate to="/calendar" replace />} />
             </Routes>
