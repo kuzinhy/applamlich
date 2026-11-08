@@ -3847,10 +3847,18 @@ router.post('/agency/analyze-file', async (req, res) => {
   let content = direct;
   let readResult: any = null;
   if (!content && req.body?.content_base64) {
+    const base64 = String(req.body.content_base64);
+    const buffer = Buffer.from(base64, 'base64');
+    const maxBytes = Number(process.env.MAX_UPLOAD_MB || 20) * 1024 * 1024;
+    console.log(`[AgencyAnalyze] 📥 Nhận yêu cầu phân tích tệp Đảng ủy: "${fileName}", kích thước: ${buffer.length} bytes (MAX_UPLOAD_MB: ${process.env.MAX_UPLOAD_MB || 20})`);
+    if (buffer.length > maxBytes) {
+      return res.status(413).json({ error: `Tệp vượt quá giới hạn ${Math.round(maxBytes / 1024 / 1024)} MB.` });
+    }
     try {
-      readResult = await extractTextAsync(fileName, Buffer.from(String(req.body.content_base64), 'base64'));
+      readResult = await extractTextAsync(fileName, buffer);
       content = readResult.text || '';
     } catch (err) {
+      console.error(`[AgencyAnalyze] ❌ Lỗi đọc tệp "${fileName}":`, err);
       return res.status(422).json({ error: `Không đọc được tệp: ${err instanceof Error ? err.message : String(err)}` });
     }
   }
@@ -4595,6 +4603,7 @@ router.post('/sources/upload', async (req, res) => {
   if (!fileName || !base64) return res.status(422).json({ error: 'Cần file_name và content_base64' });
   const buffer = Buffer.from(base64, 'base64');
   const maxBytes = Number(process.env.MAX_UPLOAD_MB || 20) * 1024 * 1024;
+  console.log(`[SourceUpload] 📥 Nhận tệp nguồn: "${fileName}", kích thước: ${buffer.length} bytes (MAX_UPLOAD_MB: ${process.env.MAX_UPLOAD_MB || 20})`);
   if (buffer.length > maxBytes) {
     return res.status(413).json({ error: `Tệp vượt quá ${Math.round(maxBytes / 1024 / 1024)} MB. Hãy tách nhỏ hoặc dán nội dung.` });
   }
@@ -4602,6 +4611,7 @@ router.post('/sources/upload', async (req, res) => {
   try {
     read = await extractTextAsync(fileName, buffer);
   } catch (err) {
+    console.error(`[SourceUpload] ❌ Lỗi đọc tệp nguồn "${fileName}":`, err);
     return res.status(422).json({ error: `Không đọc được tệp: ${err instanceof Error ? err.message : String(err)}` });
   }
   if (!read.text) return res.status(422).json({ error: read.error || 'Không trích được nội dung từ tệp.' });

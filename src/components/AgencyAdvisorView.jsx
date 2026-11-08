@@ -725,54 +725,45 @@ th { background:#F2F2F2; font-weight:bold; text-align:center; }
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <button onClick={() => fileInputRef.current?.click()} disabled={!!busyAction} style={buttonStyle({ bg: '#F8FAFC', border: '#CBD5E1', color: '#0F2A5F' })}>
-            <UploadCloud size={15} color="#2563EB" /> 1. Phân tích PDF Đảng ủy
-          </button>
-
-          <button
-            onClick={() => suppFileInputRef.current?.click()}
-            disabled={!!busyAction}
-            title="Khi đã có lịch tuần, tải tiếp Thông báo điều chỉnh / bổ sung lịch để hệ thống đối chiếu & gợi ý mục bổ sung (chữ màu xanh đậm #1D4ED8)"
-            style={buttonStyle({ bg: '#EFF6FF', border: '#93C5FD', color: '#1D4ED8', bold: true })}
-          >
-            <Plus size={15} color="#1D4ED8" /> + Bổ sung lịch (Thông báo mới)
+            <UploadCloud size={15} color="#2563EB" /> Phân tích tệp
           </button>
 
           <button onClick={handleAiDraft} disabled={!!busyAction} style={buttonStyle({ bg: '#2563EB', border: '#2563EB', color: '#FFFFFF', bold: true })}>
-            <Sparkles size={15} /> {busyAction === 'Tạo lịch BXDĐ' ? 'AI đang lập lịch...' : '2. Tạo lịch BXDĐ'}
+            <Sparkles size={15} /> {busyAction === 'Tạo lịch BXDĐ' ? 'AI đang tạo...' : 'Tạo lịch AI'}
           </button>
 
           <button onClick={handleRunQC} disabled={!!busyAction} style={buttonStyle({ bg: '#FFFBEB', border: '#FDE68A', color: '#B45309' })}>
-            <ShieldCheck size={15} color="#D97706" /> 3. Rà soát chất lượng (QC)
+            <ShieldCheck size={15} color="#D97706" /> Rà soát QC
           </button>
 
           <button onClick={handleTraceCheck} disabled={!!busyAction} style={buttonStyle({ bg: '#F8FAFC', border: '#CBD5E1', color: '#475569' })}>
-            <Eye size={15} color="#64748B" /> {busyAction === 'Đối chiếu văn bản' ? 'Đang đối chiếu...' : '4. Đối chiếu với văn bản nguồn'}
+            <Eye size={15} color="#64748B" /> {busyAction === 'Đối chiếu văn bản' ? 'Đang đối chiếu...' : 'Đối chiếu'}
           </button>
 
           <button onClick={handleBackup} disabled={!!busyAction} style={buttonStyle({ bg: '#F8FAFC', border: '#CBD5E1', color: '#475569' })}>
-            <Save size={15} color="#10B981" /> 5. Sao lưu dữ liệu
+            <Save size={15} color="#10B981" /> Sao lưu
           </button>
 
           <button onClick={handleSubmitItem} disabled={!!busyAction} style={buttonStyle({ bg: '#F5F3FF', border: '#DDD6FE', color: '#6D28D9' })}>
-            <Send size={15} color="#7C3AED" /> 6. Trình duyệt
+            <Send size={15} color="#7C3AED" /> Trình duyệt
           </button>
 
           <button onClick={() => setShowDriveModal(true)} style={buttonStyle({ bg: '#F0FDF4', border: '#BBF7D0', color: '#166534', bold: true })}>
-            <HardDrive size={15} color="#16A34A" /> Google Drive
+            <HardDrive size={15} color="#16A34A" /> Drive
           </button>
 
           <button onClick={() => setShowDeadlineModal(true)} style={buttonStyle({ bg: '#FFFBEB', border: '#FDE68A', color: '#92400E', bold: true })}>
-            <Clock size={15} color="#D97706" /> Đôn đốc tài liệu
+            <Clock size={15} color="#D97706" /> Đôn đốc
           </button>
 
           <button onClick={() => setShowAnalyticsModal(true)} style={buttonStyle({ bg: '#EFF6FF', border: '#BFDBFE', color: '#1E40AF', bold: true })}>
-            <BarChart3 size={15} color="#2563EB" /> Thống kê tải việc
+            <BarChart3 size={15} color="#2563EB" /> Thống kê
           </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button onClick={exportWord} style={buttonStyle({ bg: '#EFF6FF', border: '#BFDBFE', color: '#1D4ED8', bold: true })}>
-            <FileText size={15} color="#2563EB" /> 7. Xuất Word BXDĐ
+            <FileText size={15} color="#2563EB" /> Xuất Word
           </button>
 
           <a
@@ -780,11 +771,11 @@ th { background:#F2F2F2; font-weight:bold; text-align:center; }
             download
             style={{ ...buttonStyle({ bg: '#FEF2F2', border: '#FECACA', color: '#DC2626', bold: true }), textDecoration: 'none' }}
           >
-            <Download size={15} color="#DC2626" /> 8. Xuất PDF BXDĐ
+            <Download size={15} color="#DC2626" /> Xuất PDF
           </a>
 
           <button onClick={() => window.print()} style={buttonStyle({ bg: '#F8FAFC', border: '#CBD5E1', color: '#0F2A5F', bold: true })}>
-            <Printer size={15} color="#0F2A5F" /> 9. In lịch
+            <Printer size={15} color="#0F2A5F" /> In lịch
           </button>
         </div>
       </div>
@@ -874,17 +865,7 @@ th { background:#F2F2F2; font-weight:bold; text-align:center; }
             </div>
           </div>
 
-          <button
-            onClick={() => !busyAction && suppFileInputRef.current?.click()}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-              background: '#EFF6FF', border: '1.5px solid #3B82F6', color: '#1D4ED8',
-              borderRadius: '8px', padding: '9px 10px', fontSize: '12px', fontWeight: '800', cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(29, 78, 216, 0.12)'
-            }}
-          >
-            <Sparkles size={15} color="#1D4ED8" /> Tải Thông báo Bổ sung lịch
-          </button>
+
 
           <button
             onClick={openInternalModal}

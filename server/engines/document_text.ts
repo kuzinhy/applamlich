@@ -115,6 +115,7 @@ async function extractPdf(buffer: Buffer): Promise<TextReadResult> {
     return { text: '', chars: 0, error: `Không mở được PDF: ${err instanceof Error ? err.message : String(err)}` };
   }
 
+  console.log(`[DocumentText] 📑 PDF có ${pdf.numPages} trang. Đang trích xuất lớp chữ...`);
   const pageTexts: string[] = [];
   for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
     const page = await pdf.getPage(pageNo);
@@ -138,6 +139,7 @@ async function extractPdf(buffer: Buffer): Promise<TextReadResult> {
 
   let ocrUsed = false;
   if (scannedPages.length && process.env.PDF_OCR_DISABLED !== '1') {
+    console.log(`[DocumentText] 🔍 Phát hiện ${scannedPages.length} trang có ít chữ (nghi là PDF scan), đang chạy OCR tiếng Việt cho trang: ${scannedPages.map(s => s.pageNo).join(', ')}`);
     try {
       const { renderPdfPageToPng } = await import('./pdf_render.ts');
       for (const item of scannedPages) {
@@ -146,10 +148,11 @@ async function extractPdf(buffer: Buffer): Promise<TextReadResult> {
         if (ocr.text.trim()) {
           pageTexts[item.pageNo - 1] = ocr.text.trim();
           ocrUsed = true;
+          console.log(`[DocumentText] ✅ OCR thành công trang ${item.pageNo} (${ocr.text.trim().length} ký tự)`);
         }
       }
-    } catch {
-      /* Thiếu canvas/hạ tầng OCR: giữ phần chữ đọc được, không làm hỏng cả tệp. */
+    } catch (err) {
+      console.warn(`[DocumentText] ⚠️ Lỗi khi chạy OCR cho PDF (có thể thiếu canvas/tesseract):`, err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -248,8 +251,30 @@ async function extractSpreadsheet(buffer: Buffer): Promise<TextReadResult> {
  */
 export async function extractTextAsync(fileName: string, buffer: Buffer): Promise<TextReadResult> {
   const ext = path.extname(fileName).toLowerCase();
-  if (PDF_EXTENSIONS.includes(ext)) return extractPdf(buffer);
-  if (IMAGE_EXTENSIONS.includes(ext)) return ocrImage(buffer);
-  if (SPREADSHEET_EXTENSIONS.includes(ext)) return extractSpreadsheet(buffer);
-  return extractText(fileName, buffer);
+  const startTime = Date.now();
+  console.log(`[DocumentText] 📄 Bắt đầu phân tích tệp: "${fileName}" (${buffer.length} bytes, ext: ${ext})`);
+  try {
+    let res: TextReadResult;
+    if (PDF_EXTENSIONS.includes(ext)) {
+      res = await extractPdf(buffer);
+    } else if (IMAGE_EXTENSIONS.includes(ext)) {
+      res = await ocrImage(buffer);
+    } else if (SPREADSHEET_EXTENSIONS.includes(ext)) {
+      res = await extractSpreadsheet(buffer);
+    } else {
+      res = extractText(fileName, buffer);
+    }
+    const duration = Date.now() - startTime;
+    if (res.error) {
+      console.warn(`[DocumentText] ⚠️ Cảnh báo đọc tệp "${fileName}" sau ${duration}ms: ${res.error}`);
+    } else {
+      console.log(`[DocumentText] ✅ Đọc thành công tệp "${fileName}" (${res.chars} ký tự, ${duration}ms, meta: ${JSON.stringify(res.meta || {})})`);
+    }
+    return res;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[DocumentText] ❌ Lỗi nghiêm trọng khi đọc tệp "${fileName}" sau ${duration}ms:`, errMsg);
+    return { text: '', chars: 0, error: `Lỗi xử lý tệp: ${errMsg}` };
+  }
 }
