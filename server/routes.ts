@@ -46,7 +46,7 @@ import { officialDocumentHtml } from './engines/official_document.ts';
 import { checkDocumentFormat } from './engines/format_check.ts';
 import { holidaysInYear, holidaysInRange, LUNAR_NOTICE } from './utils/vn_holidays.ts';
 import { agencyHeadLines, advisorUnitName } from './utils/organization.ts';
-import type { DriveSetupRecord, EventRecord, EventStatus, EventTask, NotificationConfig, PublicationRecord, SessionRecord, SourceRecord, UserRecord, UserRole, WebhookEvent } from './types.ts';
+import type { ConflictRecord, DriveSetupRecord, EventRecord, EventStatus, EventTask, NotificationConfig, PublicationRecord, SessionRecord, SourceRecord, UserRecord, UserRole, WebhookEvent } from './types.ts';
 import QRCode from 'qrcode';
 import { WEBHOOK_LOG_LIMIT, EVENT_TASK_LIMIT, TRASH_LIMIT, DEFAULT_DRIVE_SETUP, DEFAULT_USER_NOTIFY_PREFS } from './types.ts';
 import { saveSession, deleteSession } from './services/firebase.ts';
@@ -133,6 +133,11 @@ function failAi(res: Response, err: unknown): Response {
 
 function findEvent(id: string): EventRecord | undefined {
   return getState().events.find((e) => e.id === id);
+}
+
+function findConflict(id: string): ConflictRecord | undefined {
+  const s = getState();
+  return s.conflicts.find((c) => c.id === id || c.event_id_1 === id || c.event_id_2 === id || `${c.event_id_1}-${c.event_id_2}` === id || `${c.event_id_2}-${c.event_id_1}` === id);
 }
 
 function refreshConflicts(weekStart?: string, weekEnd?: string): number {
@@ -3060,17 +3065,28 @@ router.post('/conflicts/reanalyze', (req, res) => {
 });
 
 router.post('/conflicts/:id/resolve', (req, res) => {
-  if (!getState().conflicts.some((c) => c.id === req.params.id)) {
+  const paramId = req.params.id;
+  const conflict = findConflict(paramId);
+  console.log(`[ConflictResolve] Received request for conflict ID/param: "${paramId}", found match:`, conflict ? { id: conflict.id, status: conflict.status, event1: conflict.event_id_1, event2: conflict.event_id_2 } : 'NOT FOUND');
+  if (!conflict) {
+    console.warn(`[ConflictResolve] 404 - Conflict not found for param: "${paramId}"`);
     return res.status(404).json({ error: 'Không tìm thấy xung đột' });
   }
   mutate((s) => {
-    const c = s.conflicts.find((x) => x.id === req.params.id)!;
-    c.status = 'RESOLVED';
-    if (req.body?.resolution) c.resolution_suggestion = String(req.body.resolution);
+    const c = s.conflicts.find((x) => x.id === conflict.id || (x.event_id_1 === conflict.event_id_1 && x.event_id_2 === conflict.event_id_2));
+    if (c) {
+      console.log(`[ConflictResolve] Mutating conflict record from status "${c.status}" to "RESOLVED" (ID: ${c.id})`);
+      c.status = 'RESOLVED';
+      if (req.body?.resolution) c.resolution_suggestion = String(req.body.resolution);
+    } else {
+      console.warn(`[ConflictResolve] Warning: conflict matched by findConflict but not found in mutate state list.`);
+    }
   });
-  audit(req, 'resolve', 'conflict', req.params.id, String(req.body?.resolution || ''));
+  audit(req, 'resolve', 'conflict', conflict.id, String(req.body?.resolution || ''));
   persist();
-  res.json({ resolved: req.params.id });
+  const updated = findConflict(conflict.id);
+  console.log(`[ConflictResolve] Successfully resolved conflict. Current status in store:`, updated ? updated.status : 'UNKNOWN');
+  res.json({ resolved: conflict.id, status: updated?.status });
 });
 
 /**
@@ -3078,7 +3094,7 @@ router.post('/conflicts/:id/resolve', (req, res) => {
  * Không tự nhận là đã giải quyết xong nếu người dùng không gửi lại event_id khớp.
  */
 router.post('/conflicts/:id/delegate', (req, res) => {
-  const conflict = getState().conflicts.find((c) => c.id === req.params.id);
+  const conflict = findConflict(req.params.id);
   if (!conflict) return res.status(404).json({ error: 'Không tìm thấy xung đột', code: 'CONFLICT_NOT_FOUND' });
   if (conflict.status !== 'OPEN') {
     return res.status(409).json({ error: 'Xung đột này đã đóng', code: 'CONFLICT_CLOSED' });
@@ -4992,7 +5008,7 @@ ${(source?.raw_text || '').slice(0, MAX_PROMPT_CHARS)}`,
 /** AI đề xuất phương án xử lý cho một xung đột cụ thể. */
 router.post('/conflicts/:id/ai-suggest', async (req, res) => {
   const state = getState();
-  const conflict = state.conflicts.find((c) => c.id === req.params.id);
+  const conflict = findConflict(req.params.id);
   if (!conflict) return res.status(404).json({ error: 'Không tìm thấy xung đột' });
   const e1 = state.events.find((e) => e.id === conflict.event_id_1);
   const e2 = state.events.find((e) => e.id === conflict.event_id_2);
