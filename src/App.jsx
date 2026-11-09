@@ -130,7 +130,6 @@ export default function App() {
   const fileInputRef = useRef(null);
   const supplementalFileInputRef = useRef(null);
   const toastTimer = useRef(null);
-  const hasAutoSelectedWeekRef = useRef(false);
 
   /** Truyền `action` cho những thao tác khó làm lại (xoá, dời lịch) để cán bộ bấm Hoàn tác ngay. */
   const showToast = (msg, action = null) => {
@@ -154,20 +153,6 @@ export default function App() {
         api.getConflicts(),
       ]);
       if (sequence !== loadSequence.current || week !== currentWeekRef.current || userId !== sessionRef.current?.id) return;
-
-      // Tự động mở tuần có lịch mới nhất khi khởi động nếu tuần theo đồng hồ máy chưa có lịch
-      if (
-        !hasAutoSelectedWeekRef.current &&
-        (state.events || []).length === 0 &&
-        (state.agency_schedules || []).length === 0 &&
-        state.latest_active_week &&
-        state.latest_active_week !== week
-      ) {
-        hasAutoSelectedWeekRef.current = true;
-        setWeekStart(state.latest_active_week);
-        return;
-      }
-      hasAutoSelectedWeekRef.current = true;
 
       setSettings(state.settings);
       setPersonnel(state.personnel || []);

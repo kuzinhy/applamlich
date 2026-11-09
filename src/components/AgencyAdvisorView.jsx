@@ -100,7 +100,6 @@ export default function AgencyAdvisorView({
 
   const fileInputRef = React.useRef(null);
   const suppFileInputRef = React.useRef(null);
-  const autoWeekCheckedRef = React.useRef(false);
   const [availableWeeks, setAvailableWeeks] = useState([]);
 
   const weekOptions = useMemo(() => {
@@ -158,16 +157,6 @@ export default function AgencyAdvisorView({
       if (Array.isArray(data.available_weeks)) {
         setAvailableWeeks(data.available_weeks);
       }
-      if (!autoWeekCheckedRef.current && items.length === 0 && data.latest_active_week) {
-        autoWeekCheckedRef.current = true;
-        const latestWn = isoWeekNumber(data.latest_active_week);
-        if (latestWn && latestWn !== weekNum) {
-          setSelectedWeek(latestWn);
-          if (onChangeWeekStart) onChangeWeekStart(data.latest_active_week);
-          return;
-        }
-      }
-      autoWeekCheckedRef.current = true;
       setScheduleItems(items);
       setAdvisor({ unit: data.advisor_unit || '', head: data.advisor_head || EMPTY_HEAD });
       setPersonnel(data.personnel || []);
