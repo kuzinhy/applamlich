@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   X, HardDrive, FolderPlus, Check, ChevronRight, Share2, ShieldCheck, Loader2, ArrowLeft
 } from 'lucide-react';
 import { api } from '../services/api';
 import {
-  DRIVE_SCOPE, createWorkFolder, extractFolderId, listWorkFolders,
+  DRIVE_SCOPE, createWorkFolder, extractFolderId, getWorkFolder, listWorkFolders,
   requestAccessToken, shareWorkFolder
 } from '../services/google';
 
@@ -43,6 +43,7 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
   const [pasteUrl, setPasteUrl] = useState('');
   const [shareEmail, setShareEmail] = useState('');
   const [shared, setShared] = useState([]);
+  const verificationRef = useRef(0);
 
   const defaultFolderName = `Lịch công tác ${unitName}`.trim();
 
@@ -55,7 +56,9 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
       setChosen(null);
       setShared([]);
       setPasteUrl('');
+      setBusy(false);
     }
+    return () => { verificationRef.current += 1; };
   }, [open]);
 
   useEffect(() => {
@@ -63,6 +66,11 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
   }, [open, defaultFolderName, newName]);
 
   if (!open) return null;
+
+  const close = () => {
+    verificationRef.current += 1;
+    onSkip?.();
+  };
 
   const askDrivePermission = async () => {
     setBusy(true);
@@ -80,7 +88,23 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
     }
   };
 
-  const useFolder = (folder) => setChosen(folder);
+  const useFolder = async (folder, advance = false) => {
+    const verification = ++verificationRef.current;
+    setBusy(true);
+    setError('');
+    setChosen(null);
+    try {
+      const verified = await getWorkFolder(token, folder.id);
+      if (verification !== verificationRef.current) return;
+      setChosen(verified);
+      if (advance) setStep(2);
+    } catch (err) {
+      if (verification !== verificationRef.current) return;
+      setError(err.message || 'Không kiểm tra được thư mục này.');
+    } finally {
+      if (verification === verificationRef.current) setBusy(false);
+    }
+  };
 
   const makeFolder = async () => {
     setBusy(true);
@@ -103,18 +127,7 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
       setError('Dán đường dẫn thư mục Drive dạng https://drive.google.com/drive/folders/…');
       return;
     }
-    setBusy(true);
-    setError('');
-    try {
-      const existing = await listWorkFolders(token, 'Lịch');
-      const matched = existing.find((f) => f.id === id) || { id, name: 'Thư mục đã dán liên kết', webViewLink: `https://drive.google.com/drive/folders/${id}` };
-      setChosen(matched);
-      setStep(2);
-    } catch (err) {
-      setError(err.message || 'Không kiểm tra được thư mục này.');
-    } finally {
-      setBusy(false);
-    }
+    await useFolder({ id }, true);
   };
 
   const addShare = async () => {
@@ -138,18 +151,24 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
 
   const finish = async () => {
     if (!chosen) return;
+    const verification = ++verificationRef.current;
     setBusy(true);
     setError('');
     try {
+      const verified = await getWorkFolder(token, chosen.id);
+      if (verification !== verificationRef.current) return;
       await api.saveMyDriveFolder({
-        folder_id: chosen.id,
-        folder_name: chosen.name || defaultFolderName,
-        folder_url: chosen.webViewLink || `https://drive.google.com/drive/folders/${chosen.id}`,
+        folder_id: verified.id,
+        folder_name: verified.name,
+        folder_url: verified.webViewLink || `https://drive.google.com/drive/folders/${verified.id}`,
       });
-      onDone?.({ folder_id: chosen.id, folder_name: chosen.name });
+      if (verification !== verificationRef.current) return;
+      onDone?.({ folder_id: verified.id, folder_name: verified.name });
     } catch (err) {
+      if (verification !== verificationRef.current) return;
       setError(err.message || 'Máy chủ không lưu được thư mục.');
-      setBusy(false);
+    } finally {
+      if (verification === verificationRef.current) setBusy(false);
     }
   };
 
@@ -171,11 +190,11 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
             <div>
               <div style={{ fontSize: '15.5px', fontWeight: '800', color: '#0F172A' }}>Kết nối nơi lưu văn bản trên Google Drive</div>
               <div style={{ fontSize: '12px', color: '#64748B' }}>
-                Bước {step + 1}/4 — {STEP_LABELS[step]} · chỉ cần làm một lần
+                Bước {step + 1}/4 — {STEP_LABELS[step]}
               </div>
             </div>
           </div>
-          <button onClick={onSkip} aria-label="Đóng" style={{ border: 'none', background: '#F1F5F9', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button onClick={close} aria-label="Đóng" style={{ border: 'none', background: '#F1F5F9', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <X size={16} color="#64748B" />
           </button>
         </div>
@@ -192,8 +211,8 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
         {step === 0 && (
           <div style={boxStyle}>
             <div style={{ fontSize: '13px', color: '#334155', lineHeight: 1.6 }}>
-              Ứng dụng cần một thư mục Drive để nhận văn bản chỉ đạo và đẩy lịch đã ban hành. Quyền cấp là{' '}
-              <strong>drive.file</strong> — chỉ đọc/ghi những tệp do chính ứng dụng tạo, không thấy toàn bộ Drive của bạn.
+              Chọn và kiểm tra thư mục lưu văn bản bằng quyền{' '}
+              <strong>drive.file</strong> — chỉ truy cập tệp do ứng dụng tạo hoặc được bạn cấp quyền riêng, không đọc toàn bộ Drive.
             </div>
             <ul style={{ fontSize: '12.5px', color: '#475569', margin: 0, paddingLeft: '18px', lineHeight: 1.7 }}>
               <li>Token truy cập chỉ sống trong trình duyệt khoảng 1 giờ, máy chủ không lưu mật khẩu hay token dài hạn.</li>
@@ -204,7 +223,7 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
                 {busy ? <Loader2 size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
                 {busy ? 'Đang chờ cấp quyền…' : 'Cấp quyền Google Drive'}
               </button>
-              <button onClick={onSkip} style={ghostBtn}>Để sau</button>
+              <button onClick={close} style={ghostBtn}>Để sau</button>
             </div>
           </div>
         )}
@@ -226,6 +245,7 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
                       key={f.id}
                       type="button"
                       onClick={() => useFolder(f)}
+                      disabled={busy}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
                         padding: '8px 12px', borderRadius: '8px', cursor: 'pointer',
@@ -260,8 +280,8 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <button onClick={() => setStep(0)} style={ghostBtn}><ArrowLeft size={14} /> Quay lại</button>
-              <button onClick={() => setStep(2)} disabled={!chosen} style={primaryBtn(!chosen)}>
+              <button onClick={() => setStep(0)} disabled={busy} style={ghostBtn}><ArrowLeft size={14} /> Quay lại</button>
+              <button onClick={() => setStep(2)} disabled={busy || !chosen} style={primaryBtn(busy || !chosen)}>
                 Tiếp tục <ChevronRight size={15} />
               </button>
             </div>
@@ -305,18 +325,18 @@ export default function DriveSetupWizard({ open, clientId, unitName = '', onDone
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={boxStyle}>
               <div style={{ fontSize: '13px', color: '#0F172A', lineHeight: 1.7 }}>
-                Thư mục <strong>{chosen?.name}</strong> sẽ ghi vào tài khoản của bạn trên máy chủ. Từ lần sau,
-                màn Bộ não tri thức và Cầu nối Drive dùng thẳng thư mục này — không cần cấp quyền lại trong phiên đó.
+                Thư mục <strong>{chosen?.name}</strong> sẽ được lưu vào tài khoản của bạn.
+                Bước này chưa bật đồng bộ văn bản hay sao lưu tự động.
               </div>
               <div style={{ fontSize: '12px', color: '#64748B' }}>
-                Máy chủ chỉ lưu mã thư mục, không lưu token.
+                Máy chủ chỉ lưu thông tin thư mục, không lưu token. Lần truy cập sau có thể cần cấp quyền Google lại.
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <button onClick={() => setStep(2)} style={ghostBtn} disabled={busy}><ArrowLeft size={14} /> Quay lại</button>
               <button onClick={finish} disabled={busy || !chosen} style={primaryBtn(busy || !chosen)}>
                 {busy ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-                {busy ? 'Đang lưu…' : 'Hoàn tất kết nối'}
+                {busy ? 'Đang kiểm tra và lưu…' : 'Kiểm tra và lưu thư mục'}
               </button>
             </div>
           </div>

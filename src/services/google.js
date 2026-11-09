@@ -107,12 +107,32 @@ async function driveFetch(path, accessToken, init = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const message = data?.error?.message || `Google Drive trả lỗi ${res.status}`;
-    throw new Error(message);
+    throw Object.assign(new Error(message), { status: res.status });
   }
   return data;
 }
 
 const FOLDER_FIELDS = 'id,name,parents,webViewLink,shared,modifiedTime';
+
+export async function getWorkFolder(accessToken, folderId) {
+  let folder;
+  try {
+    folder = await driveFetch(
+      `/files/${encodeURIComponent(folderId)}?fields=${encodeURIComponent(`${FOLDER_FIELDS},mimeType,trashed,capabilities(canAddChildren)`)}&supportsAllDrives=true`,
+      accessToken,
+    );
+  } catch (err) {
+    if (err.status === 401) throw new Error('Phiên Google Drive đã hết hạn. Quay lại bước Cấp quyền để thử lại.');
+    if (err.status === 403 || err.status === 404) {
+      throw new Error('Không truy cập được thư mục. Chỉ dán liên kết không cấp quyền drive.file; hãy chọn thư mục ứng dụng đã được cấp quyền hoặc tạo thư mục mới.');
+    }
+    throw err;
+  }
+  if (folder.mimeType !== 'application/vnd.google-apps.folder') throw new Error('Liên kết này không phải thư mục Google Drive.');
+  if (folder.trashed) throw new Error('Thư mục đang nằm trong thùng rác Google Drive.');
+  if (!folder.capabilities?.canAddChildren) throw new Error('Bạn chưa có quyền ghi vào thư mục này. Hãy chọn thư mục có quyền thêm tệp.');
+  return folder;
+}
 
 /** Tìm thư mục "Lịch công tác …" đã có trong Drive của người dùng (quyền drive.file chỉ thấy tệp do app tạo). */
 export async function listWorkFolders(accessToken, keyword = 'Lịch công tác') {

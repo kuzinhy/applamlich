@@ -94,14 +94,17 @@ export default function GoogleDriveModal({ isOpen, onClose, selectedWeek }) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: '#475569' }}>
             <div>
-              <strong>Thư mục Google Drive đã kết nối:</strong>{' '}
-              {config?.connected && config?.folder_name ? (
+              <strong>Thư mục Google Drive đã lưu:</strong>{' '}
+              {config?.folder_id && config?.folder_name ? (
                 <a href={config.folder_url || `https://drive.google.com/drive/folders/${config.folder_id}`} target="_blank" rel="noreferrer" style={{ color: '#1D4ED8', fontWeight: '600', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   {config.folder_name} <ExternalLink size={12} />
                 </a>
               ) : (
-                <span style={{ color: '#94A3B8' }}>Chưa kết nối — vào mục Cài đặt để đăng nhập Google và chọn thư mục.</span>
+                <span style={{ color: '#94A3B8' }}>Chưa lưu thư mục chung trong Cài đặt.</span>
               )}
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748B' }}>
+              Liên kết đã lưu không xác nhận quyền truy cập và không bật đồng bộ hoặc sao lưu tự động.
             </div>
             <div>
               <strong>Thư mục nhận tệp trên máy:</strong><br />
